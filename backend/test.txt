@@ -1,6 +1,4 @@
 ADD YOUR NAMES:
 
 Isa Pudiyapura
-Abdullah Ahmed		
-
-This is a sample test file
+Abdullah Ahmed
