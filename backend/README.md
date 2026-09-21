@@ -50,9 +50,6 @@ INFO:     Application startup complete.
 
 ### Backend structure:
 
-````text
-
-
 ```text
 
 backend/
@@ -97,4 +94,16 @@ backend/
 ├── .env
 ├── requirements.txt
 └── README.md
-````
+```
+
+### Note:
+
+- The workflow is pretty much:  
+  `frentend --> router --> service --> dao --> db`
+
+- `schema` is use for passing data to frontend,
+  `request` is `frontend --> router` and `response` is `router --> frontend`
+
+- `model` is for pass data from `DAO` to `database`. we can also add behaviors to the model as well.
+
+- `__inti__.py` is package marking file. the fastAPI will not here is a package if you have this empty file in the folder.
