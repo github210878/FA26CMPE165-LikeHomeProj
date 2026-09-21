@@ -99,11 +99,12 @@ backend/
 ### Note:
 
 - The workflow is pretty much:  
-  `frentend --> router --> service --> dao --> db`
+ For write `frontend -(data schema)-> router --> service -(data model)-> dao --> db`
+For read `db --> dao -(data model)-> --> service --> router -(data schema)-> frontend`
 
-- `schema` is use for passing data to frontend,
+- `schema` is for passing data between frontend and backend,
   `request` is `frontend --> router` and `response` is `router --> frontend`
 
-- `model` is for pass data from `DAO` to `database`. we can also add behaviors to the model as well.
+- `model` is for pass data from `DAO` to `database`. we can add behaviors to the model as well.
 
-- `__inti__.py` is package marking file. the fastAPI will not here is a package if you have this empty file in the folder.
+- `__inti__.py` is package marking file. the fastAPI will know here is a package if you have this empty file in the folder.
