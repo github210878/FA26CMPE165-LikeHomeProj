@@ -7,6 +7,8 @@ from app.schemas.user_schema import (
     RegisterUserResponse,
     LoginUserRequest,
     LoginUserResponse,
+    ChangePasswordRequest,
+    DeleteUserRequest,
 )
 from app.services import user_service
 
@@ -21,3 +23,15 @@ def register_user(user_info: RegisterUserRequest, db: Session = Depends(get_db))
 @router.post("/login", response_model=LoginUserResponse)
 def login_user(login_info: LoginUserRequest, db: Session = Depends(get_db)):
     return user_service.login_user(login_info, db)
+
+
+@router.post("/change-password")
+def change_password(
+    change_password_info: ChangePasswordRequest, db: Session = Depends(get_db)
+):
+    return user_service.change_password(change_password_info, db)
+
+
+@router.delete("/delete")
+def delete_user(delete_user_info: DeleteUserRequest, db: Session = Depends(get_db)):
+    return user_service.delete_user(delete_user_info, db)

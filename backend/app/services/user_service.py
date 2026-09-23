@@ -8,6 +8,8 @@ from app.schemas.user_schema import (
     RegisterUserResponse,
     LoginUserRequest,
     LoginUserResponse,
+    ChangePasswordRequest,
+    DeleteUserRequest,
 )
 
 PASSWORD_HASHER = PasswordHash.recommended()
@@ -52,3 +54,40 @@ def login_user(login_info: LoginUserRequest, db: Session):
         full_name=user.full_name,
         phone=user.phone,
     )
+
+
+def change_password(change_password_info: ChangePasswordRequest, db: Session):
+    user = user_dao.get_user_by_id(db=db, user_id=change_password_info.user_id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not PASSWORD_HASHER.verify(
+        change_password_info.old_password, user.password_hash
+    ):
+        raise HTTPException(status_code=401, detail="Old password is incorrect")
+
+    new_password_hash = PASSWORD_HASHER.hash(change_password_info.new_password)
+    user_dao.update_user_password(
+        db=db, user_id=user.user_id, new_password_hash=new_password_hash
+    )
+
+    return {"status": True, "message": "Password changed successfully"}
+
+
+def delete_user(delete_user_info: DeleteUserRequest, db: Session):
+    user = user_dao.get_user_by_id(db=db, user_id=delete_user_info.user_id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not PASSWORD_HASHER.verify(delete_user_info.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Password is incorrect")
+
+    deleted_user = user_dao.delete_user(db=db, user_id=user.user_id)
+    if not deleted_user:
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+    elif deleted_user.status != "deleted":
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+    else:
+        return {"status": True, "message": "User deleted successfully"}

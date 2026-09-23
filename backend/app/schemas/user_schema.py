@@ -27,3 +27,14 @@ class LoginUserResponse(BaseModel):
     email: EmailStr
     full_name: str | None = None
     phone: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    user_id: int
+    old_password: str = Field(max_length=20)
+    new_password: str = Field(min_length=8, max_length=20)
+
+
+class DeleteUserRequest(BaseModel):
+    user_id: int
+    password: str = Field(max_length=20)
