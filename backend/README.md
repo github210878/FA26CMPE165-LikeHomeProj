@@ -99,8 +99,8 @@ backend/
 ### Note:
 
 - The workflow is pretty much:  
- For write `frontend -(data schema)-> router --> service -(data model)-> dao --> db`
-For read `db --> dao -(data model)-> --> service --> router -(data schema)-> frontend`
+   For write `frontend -(data schema)-> router --> service -(data model)-> dao --> db`
+  For read `db --> dao -(data model)-> --> service --> router -(data schema)-> frontend`
 
 - `schema` is for passing data between frontend and backend,
   `request` is `frontend --> router` and `response` is `router --> frontend`
@@ -108,3 +108,120 @@ For read `db --> dao -(data model)-> --> service --> router -(data schema)-> fro
 - `model` is for pass data from `DAO` to `database`. we can add behaviors to the model as well.
 
 - `__inti__.py` is package marking file. the fastAPI will know here is a package if you have this empty file in the folder.
+
+---
+
+# API endpoints:
+
+### User sign up:
+
+- API: `/user/register`
+- Request data schema:
+
+```json
+{
+  "email": "xxxxxx",
+  "password": "xxxxxx",
+  "full_name": "john smith",
+  "phone": "544-646-6464"
+}
+```
+
+- Response data schema:
+
+```json
+{
+  "user_id": "1234",
+  "email": "xxxx",
+  "full_name": "sdfsdf",
+  "phone": "ssdfasdf"
+}
+```
+
+- Note:
+  - max password lenght is 20 chars
+  - frontend can store the response data somewhere like the localstorage for feature use, like pass the user_id to the backend for other API calls, e.g. "get my booking" will require the user_id to identify user.
+  - frontend should add the behavior enter your password again, and confirm both enters are same.
+
+### user log in:
+
+- API: `/users/login`
+- Request data schema:
+
+```json
+{
+  "email": "xxx",
+  "password": "xxx"
+}
+```
+
+- Response data schema:
+
+```json
+{
+  "user_id": "1234",
+  "email": "xxxx",
+  "full_name": "sdfsdf",
+  "phone": "ssdfasdf"
+}
+```
+
+- Note:
+  - max pwd len is 20 chars
+  - response is same as signup, the frontend business logic can be same. After login, store the response somewhere in browser or menory.
+  - frontend can also set a timeout, if the user stay on a page for to long, it will require a login again.
+
+### Change password:
+
+- API: `/users/change-password`
+- Request:
+
+```json
+{
+  "user_id": "xxx",
+  "old_password": "xxx",
+  "new_password": "xxx"
+}
+```
+
+- Response:
+  - For success
+
+```json
+{
+   "status": True,
+   "message": "User deleted successfully"
+}
+```
+
+- fault:
+- HTTPException
+
+### delete user:
+
+- API : `/users/delete/`
+- Request:
+
+```json
+{
+  "user_id": "xxx",
+  "password": "xxx"
+}
+```
+
+- Response:
+  - For success
+
+```json
+{
+   "status": True,
+   "message": "User deleted successfully"
+}
+```
+
+- fault:
+- HTTPException
+
+- Note:
+  - backend will have to authen the user again before de-active user.
+  - The database will not delete the raw immediately, rather than mark it as "deleted", because we may need the user information for payment history, booking history or something.
