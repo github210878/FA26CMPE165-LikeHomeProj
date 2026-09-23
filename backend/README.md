@@ -142,6 +142,7 @@ backend/
   - max password lenght is 20 chars
   - frontend can store the response data somewhere like the localstorage for feature use, like pass the user_id to the backend for other API calls, e.g. "get my booking" will require the user_id to identify user.
   - frontend should add the behavior enter your password again, and confirm both enters are same.
+  - there is no password validation in the backend. Frontend should add the function to check if the password has 2 chars or maybe 3 numbers or something. The backend takes whatever the frontend provides and hash it, then put in the database.
 
 ### user log in:
 
@@ -169,7 +170,7 @@ backend/
 - Note:
   - max pwd len is 20 chars
   - response is same as signup, the frontend business logic can be same. After login, store the response somewhere in browser or menory.
-  - frontend can also set a timeout, if the user stay on a page for to long, it will require a login again.
+  - frontend can also set a timeout, if the user stays on a page for too long, it may require a login again.
 
 ### Change password:
 
