@@ -39,6 +39,11 @@ export default function SiteHeader() {
                 <span className="sr-only"> (coming soon)</span>
               </span>
             </li>
+            <li>
+              <Link href="/signup" className="inline-flex min-h-11 items-center whitespace-nowrap rounded-md bg-teal-700 px-3 font-medium text-white transition-colors hover:bg-teal-800">
+                Sign Up
+              </Link>
+            </li>
           </ul>
         </nav>
       </div>
