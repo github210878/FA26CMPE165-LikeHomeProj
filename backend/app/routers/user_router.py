@@ -11,6 +11,7 @@ from app.schemas.user_schema import (
     DeleteUserRequest,
 )
 from app.services import user_service
+from app.utilities.auth import get_current_user_id
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -35,3 +36,12 @@ def change_password(
 @router.delete("/delete")
 def delete_user(delete_user_info: DeleteUserRequest, db: Session = Depends(get_db)):
     return user_service.delete_user(delete_user_info, db)
+
+@router.get("/me")
+def get_current_user(
+        user_id: int = Depends(get_current_user_id),
+):
+    return {
+        "message": "Protected route accessed successfully",
+        "user_id": user_id,
+    }

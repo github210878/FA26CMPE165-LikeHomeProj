@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from pwdlib import PasswordHash
 
 from app.repositories import user_dao
+from app.utilities.auth import create_access_token
 from app.schemas.user_schema import (
     RegisterUserRequest,
     RegisterUserResponse,
@@ -42,19 +43,22 @@ def login_user(login_info: LoginUserRequest, db: Session):
     user = user_dao.get_user_by_email(db=db, email=login_info.email.lower())
 
     if (
-        not user
-        or user.status != "active"
-        or not PASSWORD_HASHER.verify(login_info.password, user.password_hash)
+            not user
+            or user.status != "active"
+            or not PASSWORD_HASHER.verify(login_info.password, user.password_hash)
     ):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    access_token = create_access_token(user.user_id)
 
     return LoginUserResponse(
         user_id=user.user_id,
         email=user.email,
         full_name=user.full_name,
         phone=user.phone,
+        access_token=access_token,
+        token_type="bearer",
     )
-
 
 def change_password(change_password_info: ChangePasswordRequest, db: Session):
     user = user_dao.get_user_by_id(db=db, user_id=change_password_info.user_id)

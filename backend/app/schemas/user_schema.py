@@ -27,6 +27,8 @@ class LoginUserResponse(BaseModel):
     email: EmailStr
     full_name: str | None = None
     phone: str | None = None
+    access_token: str
+    token_type: str = "bearer"
 
 
 class ChangePasswordRequest(BaseModel):
