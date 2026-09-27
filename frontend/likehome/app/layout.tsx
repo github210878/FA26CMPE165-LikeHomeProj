@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
+import SiteHeader from "@/components/Header/ResponsiveHeader";
 import "./globals.css";
+import ResponsiveHeader from "@/components/Header/ResponsiveHeader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             Skip to main content
           </a>
 
-          <SiteHeader />
+          <ResponsiveHeader />
 
           <main id="main-content" tabIndex={-1} className="min-w-0 flex-1">
             {children}
