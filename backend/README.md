@@ -4,9 +4,14 @@
 
 1. Python version: 3.13.13
 
-2. install dependencies:
+2. install dependencies (including pytest):
    1. go to /backend/
    2. bash: `pip install -r requirements.txt`.
+
+### Run tests
+
+From `backend/`, run `python -m pytest -q`. The tests mock MySQL and SerpApi,
+so they do not require a running database or a real API key.
 
 3. init database:
    1. download and install MySQL.
