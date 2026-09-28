@@ -45,3 +45,12 @@ def delete_user(db: Session, user_id: int):
         db.commit()
         db.refresh(user)
     return user
+
+
+def verify_user(db: Session, user_id: int):
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if user:
+        user.status = "active"
+        db.commit()
+        db.refresh(user)
+    return user

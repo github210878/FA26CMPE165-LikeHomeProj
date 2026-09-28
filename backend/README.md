@@ -32,6 +32,10 @@ DB_PASSWORD=(your mysql password)
 
 EXTERNAL_API_URL=  hold on
 API_KEY= hold on
+
+JWT_SECRET_KEY=your-very-long-random-secret-key
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=60
 ```
 
 5. run backend server:

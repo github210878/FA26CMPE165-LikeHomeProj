@@ -1,12 +1,13 @@
 import os
-from datetime import datetime, timedelta, timezone
-
 import jwt
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.orm import Session
+from app.config.database import get_db
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from dotenv import load_dotenv
-
+from app.repositories import user_dao
 
 load_dotenv()
 
@@ -23,9 +24,7 @@ def create_access_token(user_id: int) -> str:
     if not JWT_SECRET_KEY:
         raise RuntimeError("JWT_SECRET_KEY is not configured")
 
-    expiration = datetime.now(timezone.utc) + timedelta(
-        minutes=JWT_EXPIRE_MINUTES
-    )
+    expiration = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
 
     payload = {
         "sub": str(user_id),
@@ -40,7 +39,7 @@ def create_access_token(user_id: int) -> str:
 
 
 def verify_access_token(
-        credentials: HTTPAuthorizationCredentials,
+    credentials: HTTPAuthorizationCredentials,
 ) -> int:
     """Verify a Bearer token and return the authenticated user's ID."""
 
@@ -74,7 +73,15 @@ def verify_access_token(
 
 
 def get_current_user_id(
-        credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> int:
     """FastAPI dependency that protects routes with Bearer authentication."""
+
+    verified_user = user_dao.verify_user(db, user_id=verify_access_token(credentials))
+    if not verified_user:
+        raise HTTPException(
+            status_code=401,
+            detail="User cannot be verified",
+        )
     return verify_access_token(credentials)

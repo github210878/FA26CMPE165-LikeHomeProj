@@ -28,18 +28,25 @@ def login_user(login_info: LoginUserRequest, db: Session = Depends(get_db)):
 
 @router.post("/change-password")
 def change_password(
-    change_password_info: ChangePasswordRequest, db: Session = Depends(get_db)
+    change_password_info: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
 ):
     return user_service.change_password(change_password_info, db)
 
 
 @router.delete("/delete")
-def delete_user(delete_user_info: DeleteUserRequest, db: Session = Depends(get_db)):
+def delete_user(
+    delete_user_info: DeleteUserRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
     return user_service.delete_user(delete_user_info, db)
+
 
 @router.get("/me")
 def get_current_user(
-        user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
 ):
     return {
         "message": "Protected route accessed successfully",
