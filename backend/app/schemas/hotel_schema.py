@@ -20,19 +20,22 @@ class HotelRate(BaseModel):
 
 
 class HotelSearchResult(BaseModel):
-    """
-    A single lightly-shaped property from SerpApi's raw response.
-    Full mapping into LikeHome's hotel/property models happens in task 3.1.3.
-    """
+    """A SerpApi property mapped into LikeHome's search response."""
 
     name: str | None = None
     property_token: str | None = None
+    price_per_night: float | None = Field(
+        default=None, description="Lowest nightly rate in the requested currency"
+    )
+    rating: float | None = Field(default=None, description="Overall rating from 0 to 5")
+    amenities: list[str] | None = None
+
+    # Keep the existing SerpApi-shaped fields for current search consumers.
     hotel_class: str | None = None
     overall_rating: float | None = None
     reviews: int | None = None
     rate_per_night: HotelRate | None = None
     total_rate: HotelRate | None = None
-    amenities: list[str] | None = None
     thumbnail: str | None = None
     link: str | None = None
     gps_coordinates: dict | None = None
