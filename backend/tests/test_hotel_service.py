@@ -67,6 +67,8 @@ def test_full_property_maps_all_fields(monkeypatch):
     hotel = result.properties[0]
     assert hotel.name == "Hotel Testa"
     assert hotel.property_token == "abc123"
+    assert hotel.price_per_night == 150
+    assert hotel.rating == 4.4
     assert hotel.overall_rating == 4.4
     assert hotel.reviews == 812
     assert hotel.rate_per_night.extracted_lowest == 150
@@ -87,6 +89,9 @@ def test_property_missing_optional_fields_does_not_crash(monkeypatch):
 
     hotel = result.properties[0]
     assert hotel.name == "Bare Bones Inn"
+    assert hotel.price_per_night is None
+    assert hotel.rating is None
+    assert hotel.property_token is None
     assert hotel.reviews is None
     assert hotel.amenities is None
     assert hotel.thumbnail is None
@@ -117,6 +122,45 @@ def test_multiple_properties_preserve_count_and_order(monkeypatch):
 
     assert result.result_count == 3
     assert [p.name for p in result.properties] == ["Hotel A", "Hotel B", "Hotel C"]
+
+
+def test_malformed_property_fields_do_not_break_search(monkeypatch):
+    malformed_property = {
+        "name": "  Hotel Testa  ",
+        "property_token": "  abc123  ",
+        "overall_rating": "unavailable",
+        "rate_per_night": {"extracted_lowest": "unavailable"},
+        "amenities": [" Free Wi-Fi ", None, 12, ""],
+        "images": [None, {"thumbnail": "  http://example.com/thumb.jpg  "}],
+    }
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        lambda params: {"properties": [malformed_property]},
+    )
+
+    result = hotel_service.search_hotels(make_request())
+
+    hotel = result.properties[0]
+    assert hotel.name == "Hotel Testa"
+    assert hotel.property_token == "abc123"
+    assert hotel.price_per_night is None
+    assert hotel.rating is None
+    assert hotel.amenities == ["Free Wi-Fi"]
+    assert hotel.thumbnail == "http://example.com/thumb.jpg"
+
+
+def test_non_property_items_are_skipped(monkeypatch):
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        lambda params: {"properties": [None, "bad item", {"name": "Hotel A"}]},
+    )
+
+    result = hotel_service.search_hotels(make_request())
+
+    assert result.result_count == 1
+    assert result.properties[0].name == "Hotel A"
 
 
 # ---------------------------------------------------------------------------

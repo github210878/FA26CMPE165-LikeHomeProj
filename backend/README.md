@@ -122,6 +122,17 @@ backend/
 
 # API endpoints:
 
+### Hotel search:
+
+- API: `GET /hotels/search` with `q`, `check_in_date`, and `check_out_date` query parameters.
+- Each result in `properties` includes LikeHome search fields: `name`,
+  `price_per_night`, `rating`, `amenities`, and `property_token`.
+- `price_per_night` is the numeric `rate_per_night.extracted_lowest` value from
+  SerpApi in the requested currency. `rating` comes from `overall_rating`.
+  Missing or malformed values are returned as `null`.
+- Search results are returned directly to the client and are not stored in MySQL.
+  Existing SerpApi-shaped result fields remain available for current clients.
+
 ### User sign up:
 
 - API: `/user/register`
