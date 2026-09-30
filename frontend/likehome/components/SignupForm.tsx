@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { ApiError, postJson } from "@/lib/api";
+import type { RegisterRequest, RegisterResponse } from "@/lib/api-types";
 import { validateSignup, type SignupValues } from "@/lib/signup";
 
 const fields = [
@@ -17,19 +19,54 @@ export default function SignupForm() {
   });
   const [touched, setTouched] = useState<Partial<Record<keyof SignupValues, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
-  const [validated, setValidated] = useState(false);
+  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [feedback, setFeedback] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
   const errors = validateSignup(values);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
     const firstInvalid = fields.find(({ name }) => errors[name]);
-    setValidated(!firstInvalid);
 
     if (firstInvalid) {
+      setStatus("idle");
+      setFeedback("");
       const input = event.currentTarget.elements.namedItem(firstInvalid.name);
       if (input instanceof HTMLInputElement) input.focus();
+      return;
+    }
+
+    const request: RegisterRequest = {
+      email: values.email.trim(),
+      password: values.password,
+      full_name: values.full_name.trim() || null,
+      phone: values.phone.trim() || null,
+    };
+
+    setStatus("submitting");
+    setFeedback("");
+    try {
+      const registered = await postJson<RegisterResponse, RegisterRequest>(
+        "/users/register",
+        request,
+      );
+      setStatus("success");
+      setFeedback(`Account created for ${registered.email}. You can sign in when login is available.`);
+      setValues((previous) => ({ ...previous, password: "", confirm_password: "" }));
+      setTouched({});
+      setSubmitted(false);
+    } catch (error) {
+      setStatus("error");
+      if (error instanceof ApiError && error.status === 409) {
+        setFeedback("An account with this email already exists.");
+      } else if (error instanceof ApiError && error.status === 422) {
+        setFeedback("Please review your details and try again.");
+      } else if (error instanceof TypeError) {
+        setFeedback("Cannot reach the registration service. Please try again later.");
+      } else {
+        setFeedback("Account creation is unavailable right now. Please try again later.");
+      }
     }
   }
 
@@ -58,7 +95,8 @@ export default function SignupForm() {
               onBlur={() => setTouched((previous) => ({ ...previous, [field.name]: true }))}
               onChange={(event) => {
                 setValues((previous) => ({ ...previous, [field.name]: event.target.value }));
-                setValidated(false);
+                setStatus("idle");
+                setFeedback("");
               }}
               className={`mt-2 min-h-11 w-full rounded-lg border bg-white px-3 py-2 text-base text-slate-950 ${error ? "border-red-600" : "border-slate-300"}`}
             />
@@ -72,11 +110,12 @@ export default function SignupForm() {
         Show passwords
       </label>
 
-      <button type="submit" className="min-h-12 w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-800">
-        Continue
+      <button type="submit" disabled={status === "submitting"} className="min-h-12 w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
+        {status === "submitting" ? "Creating account…" : "Create account"}
       </button>
       <div role="status" aria-live="polite">
-        {validated && <p className="rounded-lg border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">Your details are valid. Account creation is not available yet; your information has not been submitted.</p>}
+        {status === "success" && <p className="rounded-lg border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">{feedback}</p>}
+        {status === "error" && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{feedback}</p>}
       </div>
     </form>
   );
