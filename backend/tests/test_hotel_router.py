@@ -7,10 +7,11 @@ mocked so no real SerpApi call is made and no DB connection is required.
 """
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.hotel_schema import HotelSearchResponse
+from app.schemas.hotel_schema import HotelSearchResponse, HotelSearchResult
 from app.services import hotel_service
 
 client = TestClient(app)
@@ -104,3 +105,53 @@ def test_successful_response_matches_schema_shape():
         "result_count",
         "properties",
     }
+
+
+def test_search_forwards_browser_query_and_returns_normalized_property(monkeypatch):
+    captured = {}
+
+    def fake_search(search_info):
+        captured["request"] = search_info
+        return HotelSearchResponse(
+            search_query=search_info.q,
+            check_in_date=search_info.check_in_date,
+            check_out_date=search_info.check_out_date,
+            result_count=1,
+            properties=[HotelSearchResult(
+                name="Test Hotel",
+                property_token="property-123",
+                price_per_night=125.0,
+                rating=4.5,
+                amenities=["Pool"],
+            )],
+        )
+
+    monkeypatch.setattr(hotel_service, "search_hotels", fake_search)
+    response = client.get(
+        "/hotels/search",
+        params={**VALID_PARAMS, "adults": 3},
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert captured["request"].q == VALID_PARAMS["q"]
+    assert captured["request"].check_in_date == VALID_PARAMS["check_in_date"]
+    assert captured["request"].check_out_date == VALID_PARAMS["check_out_date"]
+    assert captured["request"].adults == 3
+    body = response.json()
+    assert body["result_count"] == 1
+    assert body["properties"][0]["name"] == "Test Hotel"
+    assert body["properties"][0]["price_per_night"] == 125.0
+    assert body["properties"][0]["rating"] == 4.5
+    assert body["properties"][0]["amenities"] == ["Pool"]
+
+
+def test_provider_error_reaches_browser_as_502(monkeypatch):
+    def fake_search(_search_info):
+        raise HTTPException(status_code=502, detail="Upstream unavailable")
+
+    monkeypatch.setattr(hotel_service, "search_hotels", fake_search)
+    response = client.get("/hotels/search", params=VALID_PARAMS)
+
+    assert response.status_code == 502
