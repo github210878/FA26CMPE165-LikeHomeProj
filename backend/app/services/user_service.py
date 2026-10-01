@@ -49,7 +49,10 @@ def login_user(login_info: LoginUserRequest, db: Session):
     ):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    access_token = create_access_token(user.user_id)
+    access_token = create_access_token(
+        user.user_id,
+        session_version=getattr(user, "session_version", 0),
+    )
 
     return LoginUserResponse(
         user_id=user.user_id,
@@ -60,8 +63,12 @@ def login_user(login_info: LoginUserRequest, db: Session):
         token_type="bearer",
     )
 
-def change_password(change_password_info: ChangePasswordRequest, db: Session):
-    user = user_dao.get_user_by_id(db=db, user_id=change_password_info.user_id)
+def change_password(
+    change_password_info: ChangePasswordRequest,
+    db: Session,
+    user_id: int,
+):
+    user = user_dao.get_user_by_id(db=db, user_id=user_id)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -73,14 +80,18 @@ def change_password(change_password_info: ChangePasswordRequest, db: Session):
 
     new_password_hash = PASSWORD_HASHER.hash(change_password_info.new_password)
     user_dao.update_user_password(
-        db=db, user_id=user.user_id, new_password_hash=new_password_hash
+        db=db, user_id=user_id, new_password_hash=new_password_hash
     )
 
     return {"status": True, "message": "Password changed successfully"}
 
 
-def delete_user(delete_user_info: DeleteUserRequest, db: Session):
-    user = user_dao.get_user_by_id(db=db, user_id=delete_user_info.user_id)
+def delete_user(
+    delete_user_info: DeleteUserRequest,
+    db: Session,
+    user_id: int,
+):
+    user = user_dao.get_user_by_id(db=db, user_id=user_id)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -88,10 +99,20 @@ def delete_user(delete_user_info: DeleteUserRequest, db: Session):
     if not PASSWORD_HASHER.verify(delete_user_info.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Password is incorrect")
 
-    deleted_user = user_dao.delete_user(db=db, user_id=user.user_id)
+    deleted_user = user_dao.delete_user(db=db, user_id=user_id)
     if not deleted_user:
         raise HTTPException(status_code=500, detail="Failed to delete user")
     elif deleted_user.status != "deleted":
         raise HTTPException(status_code=500, detail="Failed to delete user")
     else:
         return {"status": True, "message": "User deleted successfully"}
+
+
+def logout_user(db: Session, user_id: int):
+    """Invalidate all currently issued access tokens for a user."""
+
+    user = user_dao.invalidate_user_sessions(db=db, user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {"status": True, "message": "Logged out successfully"}

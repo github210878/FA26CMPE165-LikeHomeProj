@@ -33,6 +33,7 @@ def update_user_password(db: Session, user_id: int, new_password_hash: str):
     user = db.query(User).filter(User.user_id == user_id).first()
     if user:
         user.password_hash = new_password_hash
+        user.session_version = (user.session_version or 0) + 1
         db.commit()
         db.refresh(user)
     return user
@@ -42,15 +43,18 @@ def delete_user(db: Session, user_id: int):
     user = db.query(User).filter(User.user_id == user_id).first()
     if user:
         user.status = "deleted"
+        user.session_version = (user.session_version or 0) + 1
         db.commit()
         db.refresh(user)
     return user
 
 
-def verify_user(db: Session, user_id: int):
+def invalidate_user_sessions(db: Session, user_id: int):
+    """Invalidate all previously issued tokens for a user."""
+
     user = db.query(User).filter(User.user_id == user_id).first()
     if user:
-        user.status = "active"
+        user.session_version = (user.session_version or 0) + 1
         db.commit()
         db.refresh(user)
     return user

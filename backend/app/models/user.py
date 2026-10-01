@@ -24,3 +24,12 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     status: Mapped[str] = mapped_column(Enum("active", "deleted"), default="active")
+
+    # Incrementing this value invalidates all previously issued access tokens.
+    # It is used for password changes, logout-all-sessions, and account deletion.
+    session_version: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )

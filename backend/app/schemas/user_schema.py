@@ -1,6 +1,6 @@
 # app/schemas/user.py
 
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class RegisterUserRequest(BaseModel):
@@ -32,11 +32,13 @@ class LoginUserResponse(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    user_id: int
+    model_config = ConfigDict(extra="forbid")
+
     old_password: str = Field(max_length=20)
     new_password: str = Field(min_length=8, max_length=20)
 
 
 class DeleteUserRequest(BaseModel):
-    user_id: int
+    model_config = ConfigDict(extra="forbid")
+
     password: str = Field(max_length=20)

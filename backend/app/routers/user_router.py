@@ -32,7 +32,7 @@ def change_password(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    return user_service.change_password(change_password_info, db)
+    return user_service.change_password(change_password_info, db, user_id)
 
 
 @router.delete("/delete")
@@ -41,7 +41,17 @@ def delete_user(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    return user_service.delete_user(delete_user_info, db)
+    return user_service.delete_user(delete_user_info, db, user_id)
+
+
+@router.post("/logout")
+def logout_user(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Invalidate all currently issued access tokens for the user."""
+
+    return user_service.logout_user(db, user_id)
 
 
 @router.get("/me")
