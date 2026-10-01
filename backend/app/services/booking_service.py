@@ -99,24 +99,24 @@ def get_all_payments_by_user_id(db: Session, user_id: int):
     return booking_dao.get_all_payments_by_user_id(db, user_id)
 
 
-def get_booking_by_id(db: Session, booking_id: int):
-    return booking_dao.get_booking_by_id(db, booking_id)
+def get_booking_by_id(db: Session, booking_id: int, user_id: int):
+    return booking_dao.get_booking_by_id(db, booking_id, user_id)
 
 
-def get_payment_by_id(db: Session, payment_id: int):
-    return booking_dao.get_payment_by_id(db, payment_id)
+def get_payment_by_id(db: Session, payment_id: int, user_id: int):
+    return booking_dao.get_payment_by_id(db, payment_id, user_id)
 
 
-def cancel_booking(db: Session, booking_id: int):
-    reservation = booking_dao.get_booking_by_id(db, booking_id)
+def cancel_booking(db: Session, booking_id: int, user_id: int):
+    reservation = booking_dao.get_booking_by_id(db, booking_id, user_id)
     if not reservation:
         raise HTTPException(status_code=404, detail="Reservation not found")
 
-    updated_reservation = booking_dao.cancel_booking(db, booking_id)
+    updated_reservation = booking_dao.cancel_booking(db, booking_id, user_id)
     if not updated_reservation:
         raise HTTPException(status_code=404, detail="Fail to cancel reservation")
 
-    payment = booking_dao.get_payment_by_booking_id(db, booking_id)
+    payment = booking_dao.get_payment_by_booking_id(db, booking_id, user_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
 

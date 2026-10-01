@@ -160,13 +160,16 @@ def get_all_payments_by_user_id(db: Session, user_id: int):
     ]
 
 
-def get_booking_by_id(db: Session, booking_id: int):
+def get_booking_by_id(db: Session, booking_id: int, user_id: int):
 
     res = (
         db.query(Reservation, RoomType, Hotel)
         .join(RoomType, Reservation.room_type_id == RoomType.room_type_id)
         .join(Hotel, RoomType.hotel_id == Hotel.hotel_id)
-        .filter(Reservation.reservation_id == booking_id)
+        .filter(
+            Reservation.reservation_id == booking_id,
+            Reservation.user_id == user_id,
+        )
         .first()
     )
     if res is None:
@@ -198,14 +201,17 @@ def get_booking_by_id(db: Session, booking_id: int):
     }
 
 
-def get_payment_by_id(db: Session, payment_id: int):
+def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     res = (
         db.query(Payment, Reservation, RoomType, User, Hotel)
         .join(Reservation, Payment.reservation_id == Reservation.reservation_id)
         .join(RoomType, Reservation.room_type_id == RoomType.room_type_id)
         .join(User, Reservation.user_id == User.user_id)
         .join(Hotel, RoomType.hotel_id == Hotel.hotel_id)
-        .filter(Payment.payment_id == payment_id)
+        .filter(
+            Payment.payment_id == payment_id,
+            Reservation.user_id == user_id,
+        )
         .first()
     )
     if res is None:
@@ -250,29 +256,36 @@ def check_if_user_booked_by_date_range(
     )
 
 
-def cancel_booking(db: Session, reservation_id: int):
+def cancel_booking(db: Session, reservation_id: int, user_id: int):
     """
     Cancel a booking by updating its status to 'cancelled'.
     """
     reservation = (
         db.query(Reservation)
         .filter(Reservation.reservation_id == reservation_id)
+        .filter(Reservation.user_id == user_id)
         .first()
     )
+    if reservation is None:
+        return None
+
     reservation.status = "cancelled"
     db.commit()
     db.refresh(reservation)
     return reservation
 
 
-def get_payment_by_booking_id(db: Session, reservation: int):
+def get_payment_by_booking_id(db: Session, reservation_id: int, user_id: int):
     """
     Retrieve the payment associated with a specific booking ID.
     """
     return (
         db.query(Payment)
         .join(Reservation, Payment.reservation_id == Reservation.reservation_id)
-        .filter(Reservation.reservation_id == reservation)
+        .filter(
+            Reservation.reservation_id == reservation_id,
+            Reservation.user_id == user_id,
+        )
         .first()
     )
 
