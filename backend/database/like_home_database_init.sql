@@ -11,7 +11,8 @@ CREATE TABLE
         phone VARCHAR(30),
         reward_points INT NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        status ENUM ('active', 'deleted') NOT NULL DEFAULT 'active'
+        status ENUM ('active', 'deleted') NOT NULL DEFAULT 'active',
+        session_version INT NOT NULL DEFAULT 0
     );
 
 CREATE TABLE
