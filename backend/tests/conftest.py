@@ -7,7 +7,23 @@ with some test runners (e.g. PyCharm's), which don't always honor the
 
 import os
 import sys
+from datetime import date
+
+import pytest
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
+
+
+@pytest.fixture(autouse=True)
+def fixed_search_calendar(monkeypatch):
+    """Keep search fixtures valid regardless of when the tests are run."""
+    from app.schemas import hotel_schema
+
+    class SearchDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 29)
+
+    monkeypatch.setattr(hotel_schema, "date", SearchDate)
