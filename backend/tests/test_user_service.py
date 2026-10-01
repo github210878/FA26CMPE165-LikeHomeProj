@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.schemas.user_schema import (
     ChangePasswordRequest,
@@ -27,6 +28,7 @@ def make_user(**overrides):
         "full_name": "Person Example",
         "phone": "555-0100",
         "status": "active",
+        "session_version": 0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -91,7 +93,11 @@ def test_login_returns_access_token_for_active_user(monkeypatch):
             return password == "password123" and password_hash == "stored-hash"
 
     monkeypatch.setattr(user_service, "PASSWORD_HASHER", FakeHasher())
-    monkeypatch.setattr(user_service, "create_access_token", lambda user_id: "token-123")
+    monkeypatch.setattr(
+        user_service,
+        "create_access_token",
+        lambda user_id, session_version=0: "token-123",
+    )
 
     result = user_service.login_user(
         LoginUserRequest(email="PERSON@EXAMPLE.COM", password="password123"),
@@ -141,8 +147,12 @@ def test_change_password_requires_old_password_and_updates_hash(monkeypatch):
     )
 
     result = user_service.change_password(
-        ChangePasswordRequest(user_id=7, old_password="oldpass123", new_password="newpass123"),
+        ChangePasswordRequest(
+            old_password="oldpass123",
+            new_password="newpass123",
+        ),
         db=object(),
+        user_id=7,
     )
 
     assert result["status"] is True
@@ -162,8 +172,34 @@ def test_delete_user_marks_account_deleted(monkeypatch):
     monkeypatch.setattr(user_service.user_dao, "delete_user", delete_user)
 
     result = user_service.delete_user(
-        DeleteUserRequest(user_id=7, password="password123"),
+        DeleteUserRequest(password="password123"),
         db=object(),
+        user_id=7,
     )
 
     assert result == {"status": True, "message": "User deleted successfully"}
+
+
+def test_logout_invalidates_all_sessions(monkeypatch):
+    user = make_user()
+    monkeypatch.setattr(
+        user_service.user_dao,
+        "invalidate_user_sessions",
+        lambda **_: user,
+    )
+
+    result = user_service.logout_user(db=object(), user_id=7)
+
+    assert result == {"status": True, "message": "Logged out successfully"}
+
+
+def test_account_mutation_requests_reject_client_supplied_user_ids():
+    with pytest.raises(ValidationError):
+        ChangePasswordRequest(
+            user_id=99,
+            old_password="oldpass123",
+            new_password="newpass123",
+        )
+
+    with pytest.raises(ValidationError):
+        DeleteUserRequest(user_id=99, password="password123")
