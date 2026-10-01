@@ -13,7 +13,7 @@ or newer for the backend (the team setup currently uses Python 3.13).
 1. Python version: 3.13.13
 
 2. install dependencies (including pytest):
-   1. go to /backend/
+   1. go to backend/
    2. bash: `pip install -r requirements.txt`.
 
 ### Run tests
@@ -23,11 +23,11 @@ so they do not require a running database or a real API key.
 
 3. init database:
    1. download and install MySQL.
-   2. go to /backend/
+   2. go to backend/
    3. bash: `mysql -u -p < database/like_home_database_init.sql`
 
 4. enviroment setting:
-   1. go to /backend/
+   1. go to backend/
    2. create local enviroment setting file `touch .env`
    3. write following to that `.env` file:
 
@@ -57,7 +57,7 @@ mysql -u YOUR_MYSQL_USER -p likehome_db < database/migrations/001_add_session_ve
 Never commit a real `.env` file or a real JWT secret.
 
 5. run backend server:
-   1. go to /backend/
+   1. go to backend/
    2. bash: `uvicorn app.main:app --reload`
    3. you can see something like:
 
