@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import SearchForm from "./search-form";
 
 export const metadata: Metadata = {
   title: "Find a stay | LikeHome",
@@ -13,34 +14,7 @@ export default function SearchPage() {
           Where would you like to stay?
         </h1>
 
-        <form action="/search" method="get" className="mt-8 grid gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2 sm:p-6">
-          <label className="grid gap-2 text-sm font-medium text-slate-800 sm:col-span-2">
-            Destination
-            <input
-              type="search"
-              name="destination"
-              placeholder="City or neighborhood"
-              className="min-h-11 rounded-md border border-slate-300 px-3 font-normal"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-800">
-            Check-in
-            <input type="date" name="checkIn" className="min-h-11 rounded-md border border-slate-300 px-3 font-normal" />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-800">
-            Check-out
-            <input type="date" name="checkOut" className="min-h-11 rounded-md border border-slate-300 px-3 font-normal" />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-800">
-            Guests
-            <input type="number" name="guests" min="1" defaultValue="1" className="min-h-11 rounded-md border border-slate-300 px-3 font-normal" />
-          </label>
-          <div className="flex items-end">
-            <button type="submit" className="min-h-11 w-full rounded-md bg-teal-700 px-5 font-medium text-white transition-colors hover:bg-teal-800">
-              Search stays
-            </button>
-          </div>
-        </form>
+        <SearchForm />
       </div>
 
       <div className="mt-12 border-t border-slate-200 pt-8" aria-live="polite">

@@ -16,6 +16,16 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+The `/search` form validates dates and guest counts before submission. Check-in
+can be today (the browser's local date) or later, check-out must be after
+check-in, and guests must be an integer from 1 to 20. Missing or invalid inputs
+show inline errors and prevent submission. Corrected inputs are validated again.
+
+Run the validation tests with `npm test`, and run the frontend lint check with
+`npm run lint`. The tests use Node's built-in test runner and require no API key.
+The form keeps its existing GET submission to `/search`; API parameter mapping
+and displaying live results are handled in task 4.1.2.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

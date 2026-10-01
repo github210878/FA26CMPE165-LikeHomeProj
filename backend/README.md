@@ -132,6 +132,13 @@ backend/
   Missing or malformed values are returned as `null`.
 - Search results are returned directly to the client and are not stored in MySQL.
   Existing SerpApi-shaped result fields remain available for current clients.
+- Dates must be real calendar dates in `YYYY-MM-DD` format. Check-in may be
+  today (using the backend server's local date) or later; check-out must be
+  strictly after check-in. Guest counts must be whole numbers: adults 1-20,
+  children 0-20. Invalid inputs return HTTP 422 with the field and reason,
+  before any SerpApi request is made.
+
+Run backend tests with `python -m pytest -q -p no:cacheprovider tests`.
 
 ### User sign up:
 
