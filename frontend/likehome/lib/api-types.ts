@@ -71,3 +71,13 @@ export type BookingListItem = {
 export type BookingListResponse = BookingListItem[];
 
 export type BookingDetailResponse = BookingListItem | null;
+
+export type CancellationResponse = {
+  reservation_id: number;
+  status: "cancelled";
+  booking_payment_id: number;
+  booking_payment_status: "refunded";
+  cancellation_payment_id: number;
+  cancellation_amount: number;
+  cancellation_payment_status: "pending";
+};

@@ -1,5 +1,5 @@
-import { ApiError, getAuthorizedJson } from "./api.ts";
-import type { BookingDetailResponse, BookingListItem, BookingListResponse } from "./api-types.ts";
+import { ApiError, getAuthorizedJson, postAuthorizedJson } from "./api.ts";
+import type { BookingDetailResponse, BookingListItem, BookingListResponse, CancellationResponse } from "./api-types.ts";
 import { getAccessToken } from "./token-storage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,4 +53,45 @@ export async function getBookingDetails(reservationId: number): Promise<BookingD
     throw new Error("Booking details returned an unexpected response");
   }
   return response;
+}
+
+function isCancellationResponse(value: unknown): value is CancellationResponse {
+  return isRecord(value) &&
+    Number.isInteger(value.reservation_id) && (value.reservation_id as number) > 0 &&
+    value.status === "cancelled" &&
+    Number.isInteger(value.booking_payment_id) && (value.booking_payment_id as number) > 0 &&
+    value.booking_payment_status === "refunded" &&
+    Number.isInteger(value.cancellation_payment_id) && (value.cancellation_payment_id as number) > 0 &&
+    typeof value.cancellation_amount === "number" && Number.isFinite(value.cancellation_amount) && value.cancellation_amount >= 0 &&
+    value.cancellation_payment_status === "pending";
+}
+
+export async function cancelBooking(reservationId: number): Promise<CancellationResponse> {
+  if (!Number.isInteger(reservationId) || reservationId <= 0) {
+    throw new Error("Invalid reservation ID");
+  }
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+
+  const response = await postAuthorizedJson<unknown>(
+    `/bookings/cancel-booking/${reservationId}`,
+    token,
+  );
+  if (!isCancellationResponse(response) || response.reservation_id !== reservationId) {
+    throw new Error("Cancellation returned an unexpected response");
+  }
+  return response;
+}
+
+export async function cancelBookingAndRefresh(
+  reservationId: number,
+  onCancelled: (response: CancellationResponse) => void,
+): Promise<{ kind: "refreshed"; bookings: BookingListResponse } | { kind: "refresh-error"; error: unknown }> {
+  const cancellation = await cancelBooking(reservationId);
+  onCancelled(cancellation);
+  try {
+    return { kind: "refreshed", bookings: await getMyBookings() };
+  } catch (error: unknown) {
+    return { kind: "refresh-error", error };
+  }
 }
