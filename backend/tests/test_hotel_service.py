@@ -209,6 +209,7 @@ def test_config_error_becomes_http_500(monkeypatch):
         hotel_service.search_hotels(make_request())
 
     assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Hotel search service is not configured"
 
 
 def test_timeout_error_becomes_http_504(monkeypatch):
@@ -221,6 +222,7 @@ def test_timeout_error_becomes_http_504(monkeypatch):
         hotel_service.search_hotels(make_request())
 
     assert exc_info.value.status_code == 504
+    assert exc_info.value.detail == "Hotel search service timed out"
 
 
 @pytest.mark.parametrize("error_cls", [SerpApiRequestError, SerpApiResponseError])
@@ -236,17 +238,22 @@ def test_request_and_response_errors_become_http_502(monkeypatch, error_cls):
     assert exc_info.value.status_code == 502
 
 
-def test_error_detail_message_is_preserved(monkeypatch):
+def test_serpapi_error_detail_is_not_exposed(monkeypatch):
     def raise_error(params):
         raise SerpApiResponseError("SerpApi error: Invalid API key.")
 
-    monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", raise_error)
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        raise_error,
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         hotel_service.search_hotels(make_request())
 
-    assert "Invalid API key" in exc_info.value.detail
-
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == "Hotel search service returned an error"
+    assert "Invalid API key" not in exc_info.value.detail
 
 # ---------------------------------------------------------------------------
 # Request params sent to the client
