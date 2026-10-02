@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import SearchForm from "./search-form";
+import SearchExperience from "./search-experience";
 
 export const metadata: Metadata = {
   title: "Find a stay | LikeHome",
@@ -13,16 +13,8 @@ export default function SearchPage() {
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
           Where would you like to stay?
         </h1>
-
-        <SearchForm />
       </div>
-
-      <div className="mt-12 border-t border-slate-200 pt-8" aria-live="polite">
-        <h2 className="text-xl font-semibold text-slate-950">Available stays</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Search results will appear here when listings are connected.
-        </p>
-      </div>
+      <SearchExperience />
     </section>
   );
 }

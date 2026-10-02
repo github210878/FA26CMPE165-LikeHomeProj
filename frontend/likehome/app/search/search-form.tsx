@@ -2,6 +2,7 @@
 
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { validateSearchInputs } from "@/lib/search-validation.mjs";
+import type { SearchValues } from "@/lib/search";
 
 type SearchFormErrors = Partial<Record<"destination" | "checkIn" | "checkOut" | "guests", string>>;
 
@@ -22,7 +23,13 @@ function inputClass(invalid: boolean) {
   return `min-h-11 rounded-md border px-3 font-normal ${invalid ? "border-red-600" : "border-slate-300"}`;
 }
 
-export default function SearchForm() {
+export default function SearchForm({
+  onSearch,
+  isLoading,
+}: {
+  onSearch: (values: SearchValues) => void;
+  isLoading: boolean;
+}) {
   const [errors, setErrors] = useState<SearchFormErrors>({});
   const [submitted, setSubmitted] = useState(false);
 
@@ -31,15 +38,24 @@ export default function SearchForm() {
     const nextErrors = validateForm(form);
     setSubmitted(true);
     setErrors(nextErrors);
+    event.preventDefault();
     if (Object.keys(nextErrors).length > 0) {
-      event.preventDefault();
       for (const name of ["destination", "checkIn", "checkOut", "guests"] as const) {
         if (nextErrors[name]) {
           (form.elements.namedItem(name) as HTMLInputElement | null)?.focus();
           break;
         }
       }
+      return;
     }
+
+    const data = new FormData(form);
+    onSearch({
+      destination: String(data.get("destination") ?? "").trim(),
+      checkIn: String(data.get("checkIn") ?? ""),
+      checkOut: String(data.get("checkOut") ?? ""),
+      guests: String(data.get("guests") ?? "").trim(),
+    });
   }
 
   function handleChange(event: ChangeEvent<HTMLFormElement>) {
@@ -48,12 +64,10 @@ export default function SearchForm() {
 
   return (
     <form
-      action="/search"
-      method="get"
       noValidate
       onSubmit={handleSubmit}
       onChange={handleChange}
-      className="mt-8 grid gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2 sm:p-6"
+      className="mt-8 grid max-w-3xl gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2 sm:p-6"
     >
       <div className="grid gap-2 text-sm font-medium text-slate-800 sm:col-span-2">
         <label htmlFor="destination">Destination</label>
@@ -113,8 +127,8 @@ export default function SearchForm() {
         {errors.guests && <p id="guests-error" className="text-red-700">{errors.guests}</p>}
       </div>
       <div className="flex items-end">
-        <button type="submit" className="min-h-11 w-full rounded-md bg-teal-700 px-5 font-medium text-white transition-colors hover:bg-teal-800">
-          Search stays
+        <button type="submit" disabled={isLoading} className="min-h-11 w-full rounded-md bg-teal-700 px-5 font-medium text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
+          {isLoading ? "Searching…" : "Search stays"}
         </button>
       </div>
       {Object.keys(errors).length > 0 && (

@@ -21,10 +21,15 @@ can be today (the browser's local date) or later, check-out must be after
 check-in, and guests must be an integer from 1 to 20. Missing or invalid inputs
 show inline errors and prevent submission. Corrected inputs are validated again.
 
-Run the validation tests with `npm test`, and run the frontend lint check with
-`npm run lint`. The tests use Node's built-in test runner and require no API key.
-The form keeps its existing GET submission to `/search`; API parameter mapping
-and displaying live results are handled in task 4.1.2.
+Start the FastAPI backend at `http://127.0.0.1:8000` to use live hotel search.
+If it runs at another address, set `NEXT_PUBLIC_API_BASE_URL` in a local
+`.env.local` file before starting the frontend. See `.env.example` for the
+local default. Valid searches call `GET /hotels/search` and display the
+returned properties; the browser does not call SerpApi directly.
+
+Run the frontend tests with `npm test`, and run the lint check with
+`npm run lint`. The tests use Node's built-in test runner and make no real API
+requests.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
