@@ -14,3 +14,17 @@ export type HotelSearchResponse = {
   result_count: number;
   properties: HotelSearchResult[];
 };
+
+export type RegisterUserRequest = {
+  email: string;
+  password: string;
+  full_name?: string;
+  phone?: string;
+};
+
+export type RegisterUserResponse = {
+  user_id: number;
+  email: string;
+  full_name: string | null;
+  phone: string | null;
+};

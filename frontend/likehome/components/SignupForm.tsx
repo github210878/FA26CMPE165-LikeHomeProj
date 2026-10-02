@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { registerUser, registrationErrorMessage } from "@/lib/register";
 import { validateSignup, type SignupValues } from "@/lib/signup";
 
 const fields = [
@@ -17,19 +18,38 @@ export default function SignupForm() {
   });
   const [touched, setTouched] = useState<Partial<Record<keyof SignupValues, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
-  const [validated, setValidated] = useState(false);
+  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [feedback, setFeedback] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
   const errors = validateSignup(values);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (status === "submitting") return;
+
     setSubmitted(true);
     const firstInvalid = fields.find(({ name }) => errors[name]);
-    setValidated(!firstInvalid);
 
     if (firstInvalid) {
+      setStatus("idle");
+      setFeedback("");
       const input = event.currentTarget.elements.namedItem(firstInvalid.name);
       if (input instanceof HTMLInputElement) input.focus();
+      return;
+    }
+
+    setStatus("submitting");
+    setFeedback("");
+    try {
+      await registerUser(values);
+      setValues((previous) => ({ ...previous, password: "", confirm_password: "" }));
+      setSubmitted(false);
+      setTouched({});
+      setStatus("success");
+      setFeedback("Your account was created successfully.");
+    } catch (error) {
+      setStatus("error");
+      setFeedback(registrationErrorMessage(error));
     }
   }
 
@@ -52,13 +72,15 @@ export default function SignupForm() {
               type={field.type === "password" && showPasswords ? "text" : field.type}
               autoComplete={field.autoComplete}
               required={!field.optional}
+              disabled={status === "submitting"}
               value={values[field.name]}
               aria-invalid={Boolean(error)}
               aria-describedby={[hint, error ? `${field.name}-error` : undefined].filter(Boolean).join(" ") || undefined}
               onBlur={() => setTouched((previous) => ({ ...previous, [field.name]: true }))}
               onChange={(event) => {
                 setValues((previous) => ({ ...previous, [field.name]: event.target.value }));
-                setValidated(false);
+                setStatus("idle");
+                setFeedback("");
               }}
               className={`mt-2 min-h-11 w-full rounded-lg border bg-white px-3 py-2 text-base text-slate-950 ${error ? "border-red-600" : "border-slate-300"}`}
             />
@@ -68,15 +90,17 @@ export default function SignupForm() {
       })}
 
       <label className="flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm text-slate-700">
-        <input type="checkbox" checked={showPasswords} onChange={(event) => setShowPasswords(event.target.checked)} className="h-4 w-4 accent-teal-700" />
+        <input type="checkbox" checked={showPasswords} disabled={status === "submitting"} onChange={(event) => setShowPasswords(event.target.checked)} className="h-4 w-4 accent-teal-700" />
         Show passwords
       </label>
 
-      <button type="submit" className="min-h-12 w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-800">
-        Continue
+      <button type="submit" disabled={status === "submitting"} className="min-h-12 w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
+        {status === "submitting" ? "Creating account…" : "Continue"}
       </button>
       <div role="status" aria-live="polite">
-        {validated && <p className="rounded-lg border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">Your details are valid. Account creation is not available yet; your information has not been submitted.</p>}
+        {status === "submitting" && <p className="text-sm text-slate-700">Creating your account…</p>}
+        {status === "success" && <p className="rounded-lg border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">{feedback}</p>}
+        {status === "error" && <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{feedback}</p>}
       </div>
     </form>
   );
