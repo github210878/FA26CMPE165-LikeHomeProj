@@ -1,21 +1,35 @@
 "use client";
-import Link from "next/link";
-import React, { useState } from "react";
+
+import { useState } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { authenticatedNavLinks, publicNavLinks, restoringNavLinks } from "@/constants/constant";
 import SiteHeader from "./SiteHeader";
 import MobileHeader from "./MobileHeader";
 
-const ResponsiveHeader = () => {
+export default function ResponsiveHeader() {
   const [showHead, setShowHead] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [notice, setNotice] = useState("");
+  const { status, signOut } = useAuth();
+  const links = status === "authenticated" ? authenticatedNavLinks :
+    status === "unauthenticated" ? publicNavLinks : restoringNavLinks;
 
-  const openHeadHandler = () => setShowHead(true);
-  const closeHeadHandler = () => setShowHead(false);
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    const revoked = await signOut();
+    setNotice(revoked ? "" : "Signed out on this device. The server could not confirm logout.");
+    setShowHead(false);
+    setSigningOut(false);
+  }
 
   return (
     <div>
-      <SiteHeader openHead={openHeadHandler} />
-      <MobileHeader showHead = {showHead} closeHead={closeHeadHandler}/>
+      <SiteHeader links={links} status={status} signingOut={signingOut}
+        openHead={() => setShowHead(true)} signOut={handleSignOut} />
+      <MobileHeader links={links} status={status} signingOut={signingOut}
+        showHead={showHead} closeHead={() => setShowHead(false)} signOut={handleSignOut} />
+      {notice && <p role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{notice}</p>}
     </div>
   );
-};
-
-export default ResponsiveHeader;
+}
