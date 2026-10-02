@@ -28,3 +28,27 @@ export type RegisterUserResponse = {
   full_name: string | null;
   phone: string | null;
 };
+
+export type LoginUserRequest = {
+  email: string;
+  password: string;
+};
+
+export type LoginUserResponse = {
+  user_id: number;
+  email: string;
+  full_name: string | null;
+  phone: string | null;
+  access_token: string;
+  token_type: string;
+};
+
+export type CurrentUserResponse = {
+  message: string;
+  user_id: number;
+};
+
+export type LogoutUserResponse = {
+  status: boolean;
+  message: string;
+};

@@ -4,6 +4,7 @@ import SiteFooter from "@/components/SiteFooter";
 import SiteHeader from "@/components/Header/ResponsiveHeader";
 import "./globals.css";
 import ResponsiveHeader from "@/components/Header/ResponsiveHeader";
+import { AuthProvider } from "@/components/AuthProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,11 +36,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             Skip to main content
           </a>
 
-          <ResponsiveHeader />
+          <AuthProvider>
+            <ResponsiveHeader />
 
-          <main id="main-content" tabIndex={-1} className="min-w-0 flex-1">
-            {children}
-          </main>
+            <main id="main-content" tabIndex={-1} className="min-w-0 flex-1">
+              {children}
+            </main>
+          </AuthProvider>
 
           <SiteFooter />
         </div>

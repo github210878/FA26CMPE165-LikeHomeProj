@@ -36,3 +36,25 @@ export function postJson<TResponse, TRequest>(path: string, body: TRequest): Pro
     body: JSON.stringify(body),
   });
 }
+
+export function getAuthorizedJson<T>(path: string, accessToken: string): Promise<T> {
+  return requestJson<T>(path, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+}
+
+export function postAuthorizedJson<TResponse, TRequest = never>(
+  path: string,
+  accessToken: string,
+  body?: TRequest,
+): Promise<TResponse> {
+  return requestJson<TResponse>(path, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
