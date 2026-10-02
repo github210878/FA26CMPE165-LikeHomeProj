@@ -4,6 +4,7 @@ from app.models.hotel import Hotel
 from app.schemas.booking_schema import (
     BookingResponse,
     BookingRequest,
+    CancellationResponse,
 )
 from app.models.payment import Payment
 from app.repositories import booking_dao
@@ -107,35 +108,55 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     return booking_dao.get_payment_by_id(db, payment_id, user_id)
 
 
-def cancel_booking(db: Session, booking_id: int, user_id: int):
-    reservation = booking_dao.get_booking_by_id(db, booking_id, user_id)
-    if not reservation:
-        raise HTTPException(status_code=404, detail="Reservation not found")
+def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationResponse:
+    """Record a cancellation atomically; this does not process an external refund."""
+    try:
+        reservation = booking_dao.get_reservation_for_cancellation(
+            db, booking_id, user_id
+        )
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="Reservation not found")
+        if reservation.status != "confirmed":
+            raise HTTPException(
+                status_code=409, detail="Reservation cannot be cancelled"
+            )
 
-    updated_reservation = booking_dao.cancel_booking(db, booking_id, user_id)
-    if not updated_reservation:
-        raise HTTPException(status_code=404, detail="Fail to cancel reservation")
+        payments = booking_dao.get_payments_for_cancellation(
+            db, reservation.reservation_id
+        )
+        booking_payments = [p for p in payments if p.payment_type == "booking"]
+        if len(booking_payments) != 1 or any(
+            p.payment_type == "cancellation" for p in payments
+        ):
+            raise HTTPException(
+                status_code=409, detail="Reservation payment state is ambiguous"
+            )
 
-    payment = booking_dao.get_payment_by_booking_id(db, booking_id, user_id)
-    if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
-
-    updated_payment = booking_dao.update_payment_status(
-        db, payment.payment_id, "refunded"
-    )
-    if not updated_payment:
-        raise HTTPException(status_code=404, detail="Fail to update payment")
-
-    cancellation_payment = Payment(
-        reservation_id=reservation["reservation_id"],
-        amount=reservation["total_price"] * cancellation_fee,
-        payment_type="cancellation",
-        payment_status="Pending",
-    )
-
-    payment = booking_dao.create_payment(db, cancellation_payment)
-
-    return {
-        "reservation": reservation,
-        "cancellation_payment": cancellation_payment,
-    }
+        booking_payment = booking_payments[0]
+        reservation.status = "cancelled"
+        booking_payment.payment_status = "refunded"
+        cancellation_payment = Payment(
+            reservation_id=reservation.reservation_id,
+            amount=reservation.total_price * cancellation_fee,
+            payment_type="cancellation",
+            payment_status="pending",
+        )
+        db.add(cancellation_payment)
+        db.flush()
+        response = CancellationResponse(
+            reservation_id=reservation.reservation_id,
+            status=reservation.status,
+            booking_payment_id=booking_payment.payment_id,
+            booking_payment_status=booking_payment.payment_status,
+            cancellation_payment_id=cancellation_payment.payment_id,
+            cancellation_amount=cancellation_payment.amount,
+            cancellation_payment_status=cancellation_payment.payment_status,
+        )
+        db.commit()
+        return response
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to cancel reservation") from exc

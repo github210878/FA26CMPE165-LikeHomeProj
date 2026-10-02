@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from datetime import date
+from typing import Literal
 
 
 class BookingRequest(BaseModel):
@@ -24,3 +25,13 @@ class BookingResponse(BaseModel):
     room_type_id: int
     reservation_id: int
     payment_id: int
+
+
+class CancellationResponse(BaseModel):
+    reservation_id: int
+    status: Literal["cancelled"]
+    booking_payment_id: int
+    booking_payment_status: Literal["refunded"]
+    cancellation_payment_id: int
+    cancellation_amount: float
+    cancellation_payment_status: Literal["pending"]
