@@ -11,8 +11,8 @@ export class ApiError extends Error {
   }
 }
 
-export async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, init);
 
   if (!response.ok) {
     throw new ApiError(response.status);
@@ -23,4 +23,16 @@ export async function getJson<T>(path: string): Promise<T> {
   } catch {
     throw new Error("API returned an invalid JSON response");
   }
+}
+
+export function getJson<T>(path: string): Promise<T> {
+  return requestJson<T>(path);
+}
+
+export function postJson<TResponse, TRequest>(path: string, body: TRequest): Promise<TResponse> {
+  return requestJson<TResponse>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
