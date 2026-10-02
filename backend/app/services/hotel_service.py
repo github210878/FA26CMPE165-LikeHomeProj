@@ -120,11 +120,25 @@ def search_hotels(search_info: HotelSearchRequest) -> HotelSearchResponse:
     try:
         raw_response = serpapi_client.search_google_hotels(params)
     except SerpApiConfigError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail="Hotel search service is not configured",
+        ) from exc
     except SerpApiTimeoutError as exc:
-        raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except (SerpApiRequestError, SerpApiResponseError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=504,
+            detail="Hotel search service timed out",
+        ) from exc
+    except SerpApiRequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Hotel search service is temporarily unavailable",
+        ) from exc
+    except SerpApiResponseError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Hotel search service returned an error",
+        ) from exc
 
     raw_properties = raw_response.get("properties") or []
     properties = [
