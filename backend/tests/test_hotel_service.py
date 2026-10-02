@@ -272,3 +272,55 @@ def test_service_forwards_all_search_fields_to_client(monkeypatch):
     assert captured["currency"] == "EUR"
     assert captured["gl"] == "fr"
     assert captured["hl"] == "fr"
+
+
+# ---------------------------------------------------------------------------
+# Pagination
+# ---------------------------------------------------------------------------
+
+
+def test_next_page_token_is_returned(monkeypatch):
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        lambda params: {
+            "properties": [{"name": "Hotel A"}],
+            "next_page_token": "next-page-123",
+        },
+    )
+
+    result = hotel_service.search_hotels(make_request())
+
+    assert result.next_page_token == "next-page-123"
+
+
+def test_next_page_token_is_forwarded_to_serpapi(monkeypatch):
+    captured = {}
+
+    def fake_search(params):
+        captured.update(params)
+        return {"properties": []}
+
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        fake_search,
+    )
+
+    hotel_service.search_hotels(
+        make_request(next_page_token="next-page-123")
+    )
+
+    assert captured["next_page_token"] == "next-page-123"
+
+
+def test_missing_next_page_token_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        lambda params: {"properties": []},
+    )
+
+    result = hotel_service.search_hotels(make_request())
+
+    assert result.next_page_token is None

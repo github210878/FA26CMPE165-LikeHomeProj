@@ -13,6 +13,10 @@ class HotelSearchRequest(BaseModel):
     currency: str = Field(default="USD", max_length=10)
     gl: str = Field(default="us", max_length=5, description="Country code for SerpApi")
     hl: str = Field(default="en", max_length=5, description="Language code for SerpApi")
+    next_page_token: str | None = Field(
+        default=None,
+        description="SerpApi token used to request the next page of hotel results",
+    )
 
     @field_validator("check_in_date", "check_out_date")
     @classmethod
@@ -79,3 +83,4 @@ class HotelSearchResponse(BaseModel):
     check_out_date: str
     result_count: int
     properties: list[HotelSearchResult]
+    next_page_token: str | None = None

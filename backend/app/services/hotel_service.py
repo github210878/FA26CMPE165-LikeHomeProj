@@ -19,7 +19,7 @@ from app.schemas.hotel_schema import (
 
 
 def _build_serpapi_params(search_info: HotelSearchRequest) -> dict:
-    return {
+    params = {
         "q": search_info.q,
         "check_in_date": search_info.check_in_date,
         "check_out_date": search_info.check_out_date,
@@ -30,6 +30,10 @@ def _build_serpapi_params(search_info: HotelSearchRequest) -> dict:
         "hl": search_info.hl,
     }
 
+    if search_info.next_page_token:
+        params["next_page_token"] = search_info.next_page_token
+
+    return params
 
 def _optional_text(value: object) -> str | None:
     if not isinstance(value, str):
@@ -133,4 +137,5 @@ def search_hotels(search_info: HotelSearchRequest) -> HotelSearchResponse:
         check_out_date=search_info.check_out_date,
         result_count=len(properties),
         properties=properties,
+        next_page_token=_optional_text(raw_response.get("next_page_token")),
     )
