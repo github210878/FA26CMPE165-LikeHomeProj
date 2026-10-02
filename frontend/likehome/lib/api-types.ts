@@ -52,3 +52,20 @@ export type LogoutUserResponse = {
   status: boolean;
   message: string;
 };
+
+export type BookingListItem = {
+  reservation_id: number;
+  hotel_name: string;
+  room_type_name: string;
+  hotel_address: string;
+  hotel_phone: string | null;
+  hotel_description: string | null;
+  room_description: string | null;
+  check_in_date: string;
+  check_out_date: string;
+  price_per_night: number;
+  total_price: number;
+  status: "confirmed" | "cancelled" | "completed";
+};
+
+export type BookingListResponse = BookingListItem[];

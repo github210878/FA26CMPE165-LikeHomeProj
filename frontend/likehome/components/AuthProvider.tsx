@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { createSession, endSession, restoreSession } from "@/lib/auth";
 import type { CurrentUserResponse, LoginUserRequest } from "@/lib/api-types";
+import { clearAccessToken } from "@/lib/token-storage";
 
 type AuthStatus = "restoring" | "authenticated" | "unauthenticated";
 type AuthContextValue = {
@@ -10,6 +11,7 @@ type AuthContextValue = {
   user: CurrentUserResponse | null;
   signIn: (credentials: LoginUserRequest) => Promise<void>;
   signOut: () => Promise<boolean>;
+  invalidateSession: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -41,8 +43,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return revoked;
   }
 
+  const invalidateSession = useCallback(() => {
+    clearAccessToken();
+    setUser(null);
+    setStatus("unauthenticated");
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ status, user, signIn, signOut }}>
+    <AuthContext.Provider value={{ status, user, signIn, signOut, invalidateSession }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import MyBookingsExperience from "@/components/MyBookingsExperience";
 
 export const metadata: Metadata = {
   title: "My bookings | LikeHome",
@@ -13,18 +13,7 @@ export default function MyBookingsPage() {
         My bookings
       </h1>
 
-      <div className="mt-8 border-y border-slate-200 py-10">
-        <h2 className="text-xl font-semibold text-slate-950">Your stays will show up here</h2>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
-          Booking history is not connected yet. When it is, you can review upcoming and past stays here.
-        </p>
-        <Link
-          href="/search"
-          className="mt-5 inline-flex min-h-11 items-center justify-center rounded-md bg-teal-700 px-4 font-medium text-white transition-colors hover:bg-teal-800"
-        >
-          Find a stay
-        </Link>
-      </div>
+      <MyBookingsExperience />
     </section>
   );
 }
