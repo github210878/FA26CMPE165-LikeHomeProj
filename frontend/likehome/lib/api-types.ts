@@ -69,3 +69,5 @@ export type BookingListItem = {
 };
 
 export type BookingListResponse = BookingListItem[];
+
+export type BookingDetailResponse = BookingListItem | null;

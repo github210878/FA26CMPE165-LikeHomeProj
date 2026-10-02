@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
-import type { BookingListResponse } from "@/lib/api-types";
-import { getMyBookings } from "@/lib/bookings";
+import type { BookingListItem, BookingListResponse } from "@/lib/api-types";
+import { getBookingDetails, getMyBookings } from "@/lib/bookings";
 
 type LoadState =
   | { kind: "loading" }
@@ -14,11 +14,75 @@ type LoadState =
   | { kind: "success"; bookings: BookingListResponse }
   | { kind: "error" };
 
+type DetailState =
+  | { kind: "loading" }
+  | { kind: "success"; booking: BookingListItem }
+  | { kind: "not-found" }
+  | { kind: "error" };
+
+function BookingDetailPanel({ reservationId }: { reservationId: number }) {
+  const router = useRouter();
+  const { invalidateSession } = useAuth();
+  const [detail, setDetail] = useState<DetailState>({ kind: "loading" });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    getBookingDetails(reservationId).then((booking) => {
+      if (!active) return;
+      setDetail(booking ? { kind: "success", booking } : { kind: "not-found" });
+    }).catch((error: unknown) => {
+      if (!active) return;
+      if (error instanceof ApiError && error.status === 401) {
+        invalidateSession();
+        router.replace("/login");
+        return;
+      }
+      setDetail(error instanceof ApiError && error.status === 404 ? { kind: "not-found" } : { kind: "error" });
+    });
+    return () => { active = false; };
+  }, [reservationId, attempt, invalidateSession, router]);
+
+  if (detail.kind === "loading") {
+    return <p role="status" className="mt-4 text-sm text-slate-600">Loading booking details…</p>;
+  }
+  if (detail.kind === "not-found") {
+    return <p className="mt-4 text-sm text-slate-700">This booking is no longer available.</p>;
+  }
+  if (detail.kind === "error") {
+    return (
+      <div role="alert" className="mt-4 text-sm text-red-800">
+        <p>We could not load these booking details. Please try again.</p>
+        <button type="button" onClick={() => { setDetail({ kind: "loading" }); setAttempt((previous) => previous + 1); }}
+          className="mt-2 min-h-11 font-medium text-teal-700 underline">Retry details</button>
+      </div>
+    );
+  }
+
+  const booking = detail.booking;
+  return (
+    <div className="mt-4 border-t border-slate-200 pt-4">
+      <h3 className="font-semibold text-slate-950">Booking details</h3>
+      <dl className="mt-3 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
+        <div><dt className="font-medium text-slate-900">Hotel</dt><dd>{booking.hotel_name}</dd></div>
+        <div><dt className="font-medium text-slate-900">Room type</dt><dd>{booking.room_type_name}</dd></div>
+        {booking.hotel_address && <div><dt className="font-medium text-slate-900">Address</dt><dd>{booking.hotel_address}</dd></div>}
+        {booking.hotel_phone && <div><dt className="font-medium text-slate-900">Hotel phone</dt><dd>{booking.hotel_phone}</dd></div>}
+        {booking.hotel_description && <div><dt className="font-medium text-slate-900">Hotel description</dt><dd>{booking.hotel_description}</dd></div>}
+        {booking.room_description && <div><dt className="font-medium text-slate-900">Room description</dt><dd>{booking.room_description}</dd></div>}
+        <div><dt className="font-medium text-slate-900">Price per night</dt><dd>{booking.price_per_night.toFixed(2)}</dd></div>
+        <div><dt className="font-medium text-slate-900">Status</dt><dd className="capitalize">{booking.status}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
 export default function MyBookingsExperience() {
   const router = useRouter();
   const { status, invalidateSession } = useAuth();
   const [load, setLoad] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [expandedReservationId, setExpandedReservationId] = useState<number | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -92,6 +156,12 @@ export default function MyBookingsExperience() {
             <div><dt className="font-medium text-slate-900">Total price</dt><dd>{booking.total_price.toFixed(2)}</dd></div>
             <div><dt className="font-medium text-slate-900">Reservation ID</dt><dd>{booking.reservation_id}</dd></div>
           </dl>
+          <button type="button" aria-expanded={expandedReservationId === booking.reservation_id}
+            onClick={() => setExpandedReservationId((current) => current === booking.reservation_id ? null : booking.reservation_id)}
+            className="mt-4 min-h-11 font-medium text-teal-700 underline">
+            {expandedReservationId === booking.reservation_id ? "Hide details" : "View details"}
+          </button>
+          {expandedReservationId === booking.reservation_id && <BookingDetailPanel reservationId={booking.reservation_id} />}
         </li>
       ))}
     </ul>

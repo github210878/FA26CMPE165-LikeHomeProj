@@ -1,5 +1,5 @@
 import { ApiError, getAuthorizedJson } from "./api.ts";
-import type { BookingListItem, BookingListResponse } from "./api-types.ts";
+import type { BookingDetailResponse, BookingListItem, BookingListResponse } from "./api-types.ts";
 import { getAccessToken } from "./token-storage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -33,6 +33,24 @@ export async function getMyBookings(): Promise<BookingListResponse> {
   const response = await getAuthorizedJson<unknown>("/bookings/get-all-bookings", token);
   if (!Array.isArray(response) || !response.every(isBookingListItem)) {
     throw new Error("Bookings returned an unexpected response");
+  }
+  return response;
+}
+
+export async function getBookingDetails(reservationId: number): Promise<BookingDetailResponse> {
+  if (!Number.isInteger(reservationId) || reservationId <= 0) {
+    throw new Error("Invalid reservation ID");
+  }
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+
+  const response = await getAuthorizedJson<unknown>(
+    `/bookings/get-booking-details/${reservationId}`,
+    token,
+  );
+  if (response === null) return null;
+  if (!isBookingListItem(response)) {
+    throw new Error("Booking details returned an unexpected response");
   }
   return response;
 }
