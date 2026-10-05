@@ -15,6 +15,62 @@ export type HotelSearchResponse = {
   properties: HotelSearchResult[];
 };
 
+export type HotelRevalidationRequest = {
+  property_token: string;
+  q: string;
+  check_in_date: string;
+  check_out_date: string;
+  adults: number;
+  children: number;
+  currency: "USD";
+  gl: "us";
+  hl: "en";
+  displayed_price_per_night?: number;
+};
+
+export type HotelRevalidationResponse = {
+  property_token: string;
+  hotel_name: string;
+  check_in_date: string;
+  check_out_date: string;
+  adults: number;
+  children: number;
+  currency: "USD";
+  number_of_nights: number;
+  availability: "available";
+  rate_rule: "lowest_eligible_provider_base_total";
+  source: string;
+  guest_capacity: number;
+  current_price_per_night: number;
+  provider_base_total: number;
+  provider_total_with_taxes_fees: number | null;
+  likehome_reservation_total: number;
+  likehome_payment_amount: number;
+  price_changed: boolean | null;
+};
+
+export type BookingRequest = {
+  hotel_token: string;
+  q: string;
+  check_in_date: string;
+  check_out_date: string;
+  adults: number;
+  children: number;
+  currency: "USD";
+  gl: "us";
+  hl: "en";
+  price_per_night: number;
+  accepted_payment_amount: number;
+};
+
+export type BookingResponse = {
+  user_id: number;
+  hotel_id: number;
+  room_type_id: number;
+  reservation_id: number;
+  payment_id: number;
+};
+
 export type RegisterUserRequest = {
   email: string;
   password: string;

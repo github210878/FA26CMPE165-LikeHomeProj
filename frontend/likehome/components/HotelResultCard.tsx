@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { HotelSearchResult } from "@/lib/api-types";
 import { getHotelThumbnailUrl } from "@/lib/hotel-thumbnail";
 
@@ -10,7 +11,7 @@ const dollarAmount = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-export default function HotelResultCard({ hotel }: { hotel: HotelSearchResult }) {
+export default function HotelResultCard({ hotel, checkoutHref }: { hotel: HotelSearchResult; checkoutHref?: string | null }) {
   const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
   const thumbnail = getHotelThumbnailUrl(hotel.thumbnail);
 
@@ -53,6 +54,11 @@ export default function HotelResultCard({ hotel }: { hotel: HotelSearchResult })
         <p className="mt-2 break-words text-sm text-slate-600">
           {hotel.amenities.slice(0, 5).join(" · ")}
         </p>
+      )}
+      {checkoutHref && (
+        <Link href={checkoutHref} prefetch={false} className="mt-5 inline-flex min-h-11 items-center rounded-md bg-teal-700 px-4 font-medium text-white hover:bg-teal-800">
+          Select stay
+        </Link>
       )}
     </article>
   );

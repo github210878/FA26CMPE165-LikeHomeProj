@@ -1,5 +1,5 @@
 import { ApiError, getAuthorizedJson, postAuthorizedJson } from "./api.ts";
-import type { BookingDetailResponse, BookingListItem, BookingListResponse, CancellationResponse } from "./api-types.ts";
+import type { BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationResponse } from "./api-types.ts";
 import { getAccessToken } from "./token-storage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -8,6 +8,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
+}
+
+function isBookingResponse(value: unknown): value is BookingResponse {
+  return isRecord(value) &&
+    Number.isInteger(value.user_id) && (value.user_id as number) > 0 &&
+    Number.isInteger(value.hotel_id) && (value.hotel_id as number) > 0 &&
+    Number.isInteger(value.room_type_id) && (value.room_type_id as number) > 0 &&
+    Number.isInteger(value.reservation_id) && (value.reservation_id as number) > 0 &&
+    Number.isInteger(value.payment_id) && (value.payment_id as number) > 0;
+}
+
+export async function createBooking(request: BookingRequest): Promise<BookingResponse> {
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+  const response = await postAuthorizedJson<unknown, BookingRequest>("/bookings/create", token, request);
+  if (!isBookingResponse(response)) throw new Error("Booking creation returned an unexpected response");
+  return response;
 }
 
 function isBookingListItem(value: unknown): value is BookingListItem {

@@ -5,6 +5,7 @@ import HotelResultCard from "@/components/HotelResultCard";
 import { ApiError } from "@/lib/api";
 import type { HotelSearchResponse } from "@/lib/api-types";
 import { searchHotels, type SearchValues } from "@/lib/search";
+import { checkoutHref } from "@/lib/checkout-selection";
 import SearchForm from "./search-form";
 
 type SearchStatus = "idle" | "loading" | "error" | "success";
@@ -13,18 +14,21 @@ export default function SearchExperience() {
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [results, setResults] = useState<HotelSearchResponse | null>(null);
+  const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
   const requestId = useRef(0);
 
   async function handleSearch(values: SearchValues) {
     const currentRequest = ++requestId.current;
     setStatus("loading");
     setResults(null);
+    setSelectedSearch(null);
     setErrorMessage("");
 
     try {
       const response = await searchHotels(values);
       if (currentRequest !== requestId.current) return;
       setResults(response);
+      setSelectedSearch(values);
       setStatus("success");
     } catch (error) {
       if (currentRequest !== requestId.current) return;
@@ -59,7 +63,7 @@ export default function SearchExperience() {
             <ul className="mt-6 grid gap-4 md:grid-cols-2">
               {results.properties.map((hotel, index) => (
                 <li key={hotel.property_token ?? `${hotel.name ?? "hotel"}-${index}`} className="min-w-0">
-                  <HotelResultCard hotel={hotel} />
+                  <HotelResultCard hotel={hotel} checkoutHref={selectedSearch ? checkoutHref(selectedSearch, hotel) : null} />
                 </li>
               ))}
             </ul>
