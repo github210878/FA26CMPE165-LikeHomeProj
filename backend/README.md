@@ -157,6 +157,11 @@ SerpApi identity receive an internal `partner:<uuid>` token. The booking create
 request now requires a real property token; cached nightly prices remain
 search display data, not an authoritative booking rate.
 
+JWTs now carry a signed account `type` (`user` or `partner`). Tokens issued
+before this change have no type and are rejected; signed-in users and partners
+must sign in again after deployment. Login response fields and the Bearer
+header contract are unchanged.
+
 ### User sign up:
 
 - API: `/user/register`

@@ -198,14 +198,13 @@ def test_sql_contract_matches_cache_and_partner_models():
     assert HotelPartner.__table__.c.hotel_id.foreign_keys
 
 
-@pytest.mark.xfail(reason="Partner and user tokens lack distinct subject types")
 def test_partner_token_must_not_authenticate_as_same_id_user(monkeypatch):
     monkeypatch.setattr(auth, "JWT_SECRET_KEY", "isolated-test-secret-32-characters")
     monkeypatch.setattr(
         auth.user_dao, "get_user_by_id",
         lambda **kwargs: SimpleNamespace(status="active", session_version=0),
     )
-    partner_token = auth.create_access_token(7)
+    partner_token = auth.create_access_token(7, subject_type="partner")
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=partner_token)
     from fastapi import HTTPException
 

@@ -64,6 +64,7 @@ def login_partner(
     access_token = create_access_token(
         partner.partner_id,
         session_version=getattr(partner, "session_version", 0),
+        subject_type="partner",
     )
 
     return PartnerLoginResponse(

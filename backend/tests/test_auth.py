@@ -16,7 +16,7 @@ def jwt_config(monkeypatch):
 
 
 def test_create_and_verify_access_token_round_trip():
-    token = auth.create_access_token(42)
+    token = auth.create_access_token(42, subject_type="user")
 
     assert auth.verify_access_token(
         HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
@@ -36,11 +36,11 @@ def test_missing_jwt_secret_is_configuration_error(monkeypatch):
     monkeypatch.setattr(auth, "JWT_SECRET_KEY", None)
 
     with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
-        auth.create_access_token(42)
+        auth.create_access_token(42, subject_type="user")
 
 
 def test_active_user_with_matching_session_version_is_authorized(monkeypatch):
-    token = auth.create_access_token(42, session_version=3)
+    token = auth.create_access_token(42, session_version=3, subject_type="user")
     monkeypatch.setattr(
         auth.user_dao,
         "get_user_by_id",
@@ -65,7 +65,7 @@ def test_deleted_user_is_rejected_without_being_reactivated(monkeypatch):
         "get_user_by_id",
         lambda **_: deleted_user,
     )
-    token = auth.create_access_token(42, session_version=0)
+    token = auth.create_access_token(42, session_version=0, subject_type="user")
 
     with pytest.raises(HTTPException) as exc_info:
         auth.get_current_user_id(
@@ -81,7 +81,7 @@ def test_deleted_user_is_rejected_without_being_reactivated(monkeypatch):
 
 
 def test_old_session_version_is_rejected(monkeypatch):
-    token = auth.create_access_token(42, session_version=1)
+    token = auth.create_access_token(42, session_version=1, subject_type="user")
     monkeypatch.setattr(
         auth.user_dao,
         "get_user_by_id",
@@ -109,7 +109,7 @@ def test_missing_bearer_credentials_are_rejected():
 
 def test_expired_token_is_rejected(monkeypatch):
     monkeypatch.setattr(auth, "JWT_EXPIRE_MINUTES", -1)
-    token = auth.create_access_token(42)
+    token = auth.create_access_token(42, subject_type="user")
 
     with pytest.raises(HTTPException) as exc_info:
         auth.verify_access_token(
