@@ -27,18 +27,13 @@ def format_hotel_address(hotel: Hotel) -> str:
 
 def is_hotel_in_db(db: Session, target_hotel: Hotel):
     """
-    Check if a hotel with the given address exists in the database.
+    A hotel token, not a mutable name or address, identifies a persisted hotel.
     """
+    if not target_hotel.hotel_token:
+        raise ValueError("hotel_token is required to look up a hotel")
     hotel = (
         db.query(Hotel)
-        .filter(
-            Hotel.name == target_hotel.name,
-            Hotel.street == target_hotel.street,
-            Hotel.city == target_hotel.city,
-            Hotel.state == target_hotel.state,
-            Hotel.zip_code == target_hotel.zip_code,
-            Hotel.country == target_hotel.country,
-        )
+        .filter(Hotel.hotel_token == target_hotel.hotel_token)
         .first()
     )
     if hotel is not None:

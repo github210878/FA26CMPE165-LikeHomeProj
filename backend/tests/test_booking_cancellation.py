@@ -34,7 +34,7 @@ def engine():
 @pytest.fixture
 def booking(engine):
     with Session(engine) as db:
-        hotel = Hotel(name="Hotel", street="123 Main St", city="San Jose", state="CA",
+        hotel = Hotel(name="Hotel", hotel_token="test-hotel-property", street="123 Main St", city="San Jose", state="CA",
                       zip_code="95112", country="USA")
         db.add(hotel)
         db.flush()

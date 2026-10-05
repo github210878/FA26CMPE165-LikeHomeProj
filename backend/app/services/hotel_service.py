@@ -1,8 +1,10 @@
 import math
+import logging
 
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from app.config.database import get_db
 from app.models.cache_hotel import CacheHotel
 from app.repositories import hotel_dao
@@ -19,6 +21,8 @@ from app.schemas.hotel_schema import (
     HotelSearchResult,
     HotelRate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _build_serpapi_params(search_info: HotelSearchRequest) -> dict:
@@ -150,7 +154,12 @@ def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchRe
     ]
 
     # Cache the hotel data in the database
-    _cache_hotels(properties=properties, db=db)
+    try:
+        _cache_hotels(properties=properties, db=db)
+    except SQLAlchemyError:
+        # Search results remain usable when the best-effort cache is unavailable.
+        db.rollback()
+        logger.warning("Could not cache hotel search results", exc_info=True)
 
     return HotelSearchResponse(
         search_query=search_info.q,

@@ -26,7 +26,7 @@ VALID_PARAMS = {
 def mock_search(monkeypatch):
     """By default, short-circuit the SerpApi call with a canned empty response."""
 
-    def fake_search_hotels(search_info):
+    def fake_search_hotels(search_info, db):
         return HotelSearchResponse(
             search_query=search_info.q,
             check_in_date=search_info.check_in_date,
@@ -69,7 +69,7 @@ def test_adults_at_bounds_is_accepted(adults):
 def test_defaults_are_applied_when_optional_params_omitted(monkeypatch):
     captured = {}
 
-    def fake_search_hotels(search_info):
+    def fake_search_hotels(search_info, db):
         captured["search_info"] = search_info
         return HotelSearchResponse(
             search_query=search_info.q,
@@ -103,4 +103,5 @@ def test_successful_response_matches_schema_shape():
         "check_out_date",
         "result_count",
         "properties",
+        "next_page_token",
     }

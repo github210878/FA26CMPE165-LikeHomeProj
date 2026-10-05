@@ -23,7 +23,7 @@ def local_search_hotels(
     db: Session = Depends(get_db),
 ):
 
-    return hotel_service.search_hotels(
+    return hotel_service.local_search_hotels(
         db=db,
         search_info=search_info,
     )

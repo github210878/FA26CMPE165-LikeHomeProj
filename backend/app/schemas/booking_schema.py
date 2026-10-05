@@ -1,11 +1,11 @@
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 from datetime import date
 from typing import Literal
 
 
 class BookingRequest(BaseModel):
-    hotel_name: str | None = Field(default="Unknown", max_length=5000)
-    hotel_token: str | None = Field(default=None, max_length=255)
+    hotel_name: str = Field(min_length=1, max_length=255)
+    hotel_token: str = Field(min_length=1, max_length=255)
     hotel_description: str | None = Field(default=None, max_length=5000)
     hotel_street: str | None = Field(default=None, max_length=255)
     hotel_city: str | None = Field(default=None, max_length=100)
@@ -18,6 +18,14 @@ class BookingRequest(BaseModel):
     room_type_name: str | None = Field(default=None, max_length=100)
     room_type_description: str | None = Field(default=None, max_length=500)
     price_per_night: float
+
+    @field_validator("hotel_token")
+    @classmethod
+    def require_real_property_token(cls, value: str) -> str:
+        token = value.strip()
+        if not token or token.startswith(("legacy:", "partner:")):
+            raise ValueError("A SerpApi property token is required")
+        return token
 
 
 class BookingResponse(BaseModel):

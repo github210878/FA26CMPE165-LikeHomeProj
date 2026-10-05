@@ -140,6 +140,23 @@ backend/
 
 Run backend tests with `python -m pytest -q -p no:cacheprovider tests`.
 
+### Hotel database upgrade
+
+Databases created before the hotel token/cache/partner schema change need the
+one-time `database/migrations/002_add_hotel_tokens_cache_and_partners.sql`
+migration. A fresh database created from `database/like_home_database_init.sql`
+already has these objects and must not run this migration. Back up an existing
+database before applying it; MySQL DDL commits implicitly. Apply the earlier
+session-version migration separately if that column is also missing.
+
+The migration preserves existing Hotel rows and assigns each one an internal
+`legacy:<hotel_id>` token. Such tokens are not SerpApi property tokens and must
+not be used to verify property identity or pricing. A real SerpApi property
+token identifies one Hotel row uniquely. Partner-created hotels without a
+SerpApi identity receive an internal `partner:<uuid>` token. The booking create
+request now requires a real property token; cached nightly prices remain
+search display data, not an authoritative booking rate.
+
 ### User sign up:
 
 - API: `/user/register`

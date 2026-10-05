@@ -27,21 +27,20 @@ def upsert_cache_hotel(
     if not property_token:
         raise ValueError("property_token is required")
 
-    cache_hotel = get_cache_hotel_by_property_token(
-        db=db,
-        property_token=property_token,
-    )
-
-    if cache_hotel is None:
-        cache_hotel = CacheHotel(**hotel_data)
-        db.add(cache_hotel)
-    else:
-        for key, value in hotel_data.items():
-            if hasattr(cache_hotel, key):
-                setattr(cache_hotel, key, value)
-
-    db.commit()
-    db.refresh(cache_hotel)
+    try:
+        cache_hotel = get_cache_hotel_by_property_token(db, property_token)
+        if cache_hotel is None:
+            cache_hotel = CacheHotel(**hotel_data)
+            db.add(cache_hotel)
+        else:
+            for key, value in hotel_data.items():
+                if hasattr(cache_hotel, key):
+                    setattr(cache_hotel, key, value)
+        db.commit()
+        db.refresh(cache_hotel)
+    except Exception:
+        db.rollback()
+        raise
 
     return cache_hotel
 
@@ -50,26 +49,26 @@ def upsert_cache_hotels(
     db: Session,
     hotels_data: list[dict],
 ) -> None:
-    for hotel_data in hotels_data:
-        property_token = hotel_data.get("property_token")
-
-        if not property_token:
-            continue
-
-        cache_hotel = get_cache_hotel_by_property_token(
-            db=db,
-            property_token=property_token,
-        )
-
-        if cache_hotel is None:
-            cache_hotel = CacheHotel(**hotel_data)
-            db.add(cache_hotel)
-        else:
-            for key, value in hotel_data.items():
-                if hasattr(cache_hotel, key):
-                    setattr(cache_hotel, key, value)
-
-    db.commit()
+    # A provider response can repeat a property. The last occurrence wins.
+    by_token = {
+        hotel_data["property_token"]: hotel_data
+        for hotel_data in hotels_data
+        if hotel_data.get("property_token")
+    }
+    try:
+        for property_token, hotel_data in by_token.items():
+            cache_hotel = get_cache_hotel_by_property_token(db, property_token)
+            if cache_hotel is None:
+                db.add(CacheHotel(**hotel_data))
+            else:
+                for key, value in hotel_data.items():
+                    if hasattr(cache_hotel, key):
+                        setattr(cache_hotel, key, value)
+        if by_token:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def delete_cache_hotel(

@@ -92,12 +92,12 @@ CREATE TABLE
 CREATE TABLE
     cache_hotels (
         property_token VARCHAR(255) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NULL,
         price_per_night DECIMAL(10, 2),
-        rating DECIMAL(2, 1),
+        rating DECIMAL(3, 2),
         amenities JSON,
         hotel_class VARCHAR(50),
-        overall_rating DECIMAL(2, 1),
+        overall_rating DECIMAL(3, 2),
         reviews INT,
         rate_per_night JSON,
         total_rate JSON,
