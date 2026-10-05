@@ -13,10 +13,9 @@ from app.repositories import booking_dao
 from app.config.constants import Constants
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
+from app.schemas.hotel_schema import HotelRevalidationRequest
+from app.services import hotel_service
 
-# constants
-sale_tax = Constants.SALE_TAX
-service_fee = Constants.SERVICE_FEE
 cancellation_fee = Constants.CANCELLATION_FEE
 MONEY_CENT = Decimal("0.01")
 MAX_MONEY = Decimal("99999999.99")  # DECIMAL(10, 2) in the initialization SQL
@@ -27,17 +26,33 @@ def _money(value: Decimal) -> Decimal:
 
 
 def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> BookingResponse:
-    """Persist a booking in one transaction; the submitted rate is not verified."""
+    """Recheck the accepted property quote before one atomic local booking write."""
     try:
         nights = (booking_info.check_out_date - booking_info.check_in_date).days
         if nights <= 0:
             raise HTTPException(status_code=422, detail="Check-out must be after check-in")
 
-        nightly_price = _money(Decimal(str(booking_info.price_per_night)))
-        if nightly_price <= 0:
-            raise HTTPException(status_code=422, detail="Nightly price rounds to zero")
-        total_price = _money(nightly_price * nights * Decimal(str(service_fee)))
-        payment_amount = _money(total_price * Decimal(str(sale_tax)))
+        quote = hotel_service.revalidate_hotel(
+            HotelRevalidationRequest(
+                property_token=booking_info.hotel_token,
+                q=booking_info.q,
+                check_in_date=booking_info.check_in_date,
+                check_out_date=booking_info.check_out_date,
+                adults=booking_info.adults,
+                children=booking_info.children,
+                currency=booking_info.currency,
+                gl=booking_info.gl,
+                hl=booking_info.hl,
+            )
+        )
+        nightly_price = _money(Decimal(str(quote.current_price_per_night)))
+        payment_amount = _money(Decimal(str(quote.likehome_payment_amount)))
+        if (
+            _money(Decimal(str(booking_info.price_per_night))) != nightly_price
+            or _money(Decimal(str(booking_info.accepted_payment_amount))) != payment_amount
+        ):
+            raise HTTPException(status_code=409, detail="Rate changed; revalidate and review the current quote")
+        total_price = Decimal(str(quote.likehome_reservation_total))
         if nightly_price > MAX_MONEY or total_price > MAX_MONEY or payment_amount > MAX_MONEY:
             raise HTTPException(status_code=422, detail="Booking amount exceeds supported range")
 
@@ -51,15 +66,8 @@ def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> B
             )
 
         hotel = Hotel(
-            name=booking_info.hotel_name,
-            hotel_token=booking_info.hotel_token,
-            description=booking_info.hotel_description,
-            street=booking_info.hotel_street,
-            city=booking_info.hotel_city,
-            state=booking_info.hotel_state,
-            zip_code=booking_info.hotel_zip_code,
-            country=booking_info.hotel_country,
-            phone=booking_info.hotel_phone,
+            name=quote.hotel_name,
+            hotel_token=quote.property_token,
         )
         hotel_id = booking_dao.is_hotel_in_db(db, hotel)
         if hotel_id is None:
@@ -67,8 +75,8 @@ def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> B
 
         room_type = RoomType(
             hotel_id=hotel_id,
-            type_name=booking_info.room_type_name,
-            description=booking_info.room_type_description,
+            type_name="Lowest available rate",
+            description=f"Provider: {quote.source[:480]}",
             price_per_night=float(nightly_price),
         )
         room_type_id = booking_dao.is_room_type_in_db(db, room_type)

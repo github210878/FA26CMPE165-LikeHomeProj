@@ -61,10 +61,12 @@ def test_hotel_lookup_uses_token_and_unique_constraint(sqlite_session):
 def test_booking_requires_external_token_and_uses_hotel_model_field(monkeypatch):
     base = dict(
         hotel_name="Hotel A",
+        q="San Jose hotels",
         check_in_date=date(2026, 10, 5),
         check_out_date=date(2026, 10, 8),
         room_type_name="Standard",
         price_per_night=100,
+        accepted_payment_amount=340.20,
     )
     with pytest.raises(ValidationError):
         BookingRequest(**base)
@@ -72,6 +74,18 @@ def test_booking_requires_external_token_and_uses_hotel_model_field(monkeypatch)
         BookingRequest(**base, hotel_token="legacy:4")
 
     request = BookingRequest(**base, hotel_token="real-property-1")
+    monkeypatch.setattr(
+        booking_service.hotel_service,
+        "revalidate_hotel",
+        lambda info: SimpleNamespace(
+            current_price_per_night=100,
+            likehome_reservation_total=315,
+            likehome_payment_amount=340.20,
+            hotel_name="Hotel A",
+            property_token=info.property_token,
+            source="Provider A",
+        ),
+    )
     monkeypatch.setattr(
         booking_service.booking_dao,
         "check_if_user_booked_by_date_range",

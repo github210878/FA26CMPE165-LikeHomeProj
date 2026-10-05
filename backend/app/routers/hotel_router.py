@@ -3,10 +3,18 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 from app.config.database import get_db
-from app.schemas.hotel_schema import HotelSearchRequest, HotelSearchResponse
+from app.schemas.hotel_schema import (
+    HotelSearchRequest, HotelSearchResponse,
+    HotelRevalidationRequest, HotelRevalidationResponse,
+)
 from app.services import hotel_service
 
 router = APIRouter(prefix="/hotels", tags=["Hotels"])
+
+
+@router.post("/revalidate", response_model=HotelRevalidationResponse)
+def revalidate_hotel(info: HotelRevalidationRequest):
+    return hotel_service.revalidate_hotel(info)
 
 
 @router.get("/search", response_model=HotelSearchResponse)

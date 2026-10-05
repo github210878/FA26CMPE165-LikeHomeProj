@@ -1,5 +1,6 @@
 import math
 import logging
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -20,9 +21,128 @@ from app.schemas.hotel_schema import (
     HotelSearchResponse,
     HotelSearchResult,
     HotelRate,
+    HotelRevalidationRequest,
+    HotelRevalidationResponse,
 )
+from app.config.constants import Constants
 
 logger = logging.getLogger(__name__)
+CENT = Decimal("0.01")
+
+
+def _provider_money(value: object) -> Decimal | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return amount if amount.is_finite() and 0 < amount <= Decimal("99999999.99") else None
+
+
+def _extracted(rate: object, field: str) -> Decimal | None:
+    return _provider_money(rate.get(field)) if isinstance(rate, dict) else None
+
+
+def _cents(amount: Decimal) -> Decimal:
+    return amount.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def revalidate_hotel(info: HotelRevalidationRequest) -> HotelRevalidationResponse:
+    """Quote the cheapest eligible provider listing for this property and stay.
+
+    A property card selects no room. We therefore use a documented property-level
+    rule and never claim that a specific room or supplier reservation was held.
+    """
+    params = {
+        "q": info.q,
+        "property_token": info.property_token,
+        "check_in_date": info.check_in_date.isoformat(),
+        "check_out_date": info.check_out_date.isoformat(),
+        "adults": info.adults,
+        "children": info.children,
+        "currency": info.currency,
+        "gl": info.gl,
+        "hl": info.hl,
+    }
+    try:
+        details = serpapi_client.search_google_hotels(params)
+    except SerpApiConfigError as exc:
+        raise HTTPException(status_code=500, detail="Hotel rate service is not configured") from exc
+    except SerpApiTimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Hotel rate service timed out") from exc
+    except (SerpApiRequestError, SerpApiResponseError) as exc:
+        raise HTTPException(status_code=502, detail="Hotel rate service is temporarily unavailable") from exc
+
+    if not isinstance(details, dict):
+        raise HTTPException(status_code=502, detail="Hotel rate service returned an invalid response")
+    hotel_name = _optional_text(details.get("name"))
+    if details.get("property_token") != info.property_token or not hotel_name or len(hotel_name) > 255:
+        raise HTTPException(status_code=409, detail="Property could not be verified; search again")
+
+    offers = details.get("prices")
+    if not isinstance(offers, list):
+        raise HTTPException(status_code=409, detail="No usable rate for this stay; search again")
+
+    nights = (info.check_out_date - info.check_in_date).days
+    party_size = info.adults + info.children
+    candidates = []
+    for offer in offers:
+        if not isinstance(offer, dict):
+            continue
+        source = _optional_text(offer.get("source"))
+        capacity = offer.get("num_guests")
+        nightly = _extracted(offer.get("rate_per_night"), "extracted_before_taxes_fees")
+        total = _extracted(offer.get("total_rate"), "extracted_before_taxes_fees")
+        total_with_fees = _extracted(offer.get("total_rate"), "extracted_lowest")
+        if (
+            not source or isinstance(capacity, bool) or not isinstance(capacity, int)
+            or capacity < party_size or nightly is None or total is None
+        ):
+            continue
+        # Google rounds nightly display values. Large disagreement means the
+        # listing cannot safely support the existing nightly/stay contract.
+        if abs(nightly * nights - total) > Decimal(nights):
+            continue
+        if total_with_fees is not None and total_with_fees < total:
+            continue
+        candidates.append((total, source, capacity, total_with_fees))
+
+    if not candidates:
+        raise HTTPException(status_code=409, detail="No usable rate for this stay; search again")
+
+    base_total, source, capacity, provider_total = min(candidates, key=lambda row: (row[0], row[1]))
+    base_total = _cents(base_total)
+    nightly_average = _cents(base_total / nights)
+    reservation_total = _cents(base_total * Decimal(str(Constants.SERVICE_FEE)))
+    payment_amount = _cents(reservation_total * Decimal(str(Constants.SALE_TAX)))
+    if max(nightly_average, reservation_total, payment_amount) > Decimal("99999999.99"):
+        raise HTTPException(status_code=409, detail="No usable rate for this stay; search again")
+    displayed = info.displayed_price_per_night
+    changed = (
+        None if displayed is None or provider_total is None
+        else _cents(Decimal(str(displayed))) != _cents(provider_total / nights)
+    )
+    return HotelRevalidationResponse(
+        property_token=info.property_token,
+        hotel_name=hotel_name,
+        check_in_date=info.check_in_date,
+        check_out_date=info.check_out_date,
+        adults=info.adults,
+        children=info.children,
+        currency=info.currency,
+        number_of_nights=nights,
+        availability="available",
+        rate_rule="lowest_eligible_provider_base_total",
+        source=source,
+        guest_capacity=capacity,
+        current_price_per_night=float(nightly_average),
+        provider_base_total=float(_cents(base_total)),
+        provider_total_with_taxes_fees=float(_cents(provider_total)) if provider_total is not None else None,
+        likehome_reservation_total=float(reservation_total),
+        likehome_payment_amount=float(payment_amount),
+        price_changed=changed,
+    )
 
 
 def _build_serpapi_params(search_info: HotelSearchRequest) -> dict:

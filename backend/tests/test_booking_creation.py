@@ -1,6 +1,7 @@
 """Booking creation tests use only in-memory SQLite and test-local JWTs."""
 
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +20,7 @@ from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.routers.booking_router import router as booking_router
 from app.schemas.booking_schema import BookingRequest, BookingResponse
+from app.schemas.hotel_schema import HotelRevalidationResponse
 from app.services import booking_service
 from app.utilities import auth
 
@@ -37,6 +39,7 @@ def request(*, check_in=date(2026, 11, 1), check_out=date(2026, 11, 2), **overri
     fields = dict(
         hotel_name="Hotel A",
         hotel_token="property-A",
+        q="San Jose hotels",
         room_type_name="Queen",
         room_type_description="One queen bed",
         check_in_date=check_in,
@@ -44,7 +47,30 @@ def request(*, check_in=date(2026, 11, 1), check_out=date(2026, 11, 2), **overri
         price_per_night=100,
     )
     fields.update(overrides)
+    if "accepted_payment_amount" not in fields:
+        base = Decimal(str(fields["price_per_night"])) * (fields["check_out_date"] - fields["check_in_date"]).days
+        reservation = (base * Decimal("1.05")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        fields["accepted_payment_amount"] = float((reservation * Decimal("1.08")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
     return BookingRequest(**fields)
+
+
+@pytest.fixture(autouse=True)
+def mock_revalidation(monkeypatch):
+    def quote(info):
+        nights = (info.check_out_date - info.check_in_date).days
+        return HotelRevalidationResponse(
+            property_token=info.property_token, hotel_name="Hotel A",
+            check_in_date=info.check_in_date, check_out_date=info.check_out_date,
+            adults=info.adults, children=info.children, currency="USD",
+            number_of_nights=nights, availability="available",
+            rate_rule="lowest_eligible_provider_base_total", source="Provider A",
+            guest_capacity=2, current_price_per_night=100,
+            provider_base_total=100 * nights,
+            provider_total_with_taxes_fees=120 * nights,
+            likehome_reservation_total=105 * nights,
+            likehome_payment_amount=float(Decimal("113.40") * nights), price_changed=None,
+        )
+    monkeypatch.setattr(booking_service.hotel_service, "revalidate_hotel", quote)
 
 
 @pytest.mark.parametrize(
@@ -77,7 +103,7 @@ def test_stay_pricing_and_single_commit(engine, monkeypatch, check_out, nights, 
         reservation = db.get(Reservation, response.reservation_id)
         payment = db.get(Payment, response.payment_id)
         assert hotel.hotel_token == "property-A"
-        assert room.type_name == "Queen"
+        assert room.type_name == "Lowest available rate"
         assert reservation.user_id == 7
         assert (reservation.check_out_date - reservation.check_in_date).days == nights
         assert reservation.total_price == pytest.approx(total)
@@ -98,12 +124,20 @@ def test_invalid_date_range_is_a_validation_error(check_in, check_out):
         request(check_in=check_in, check_out=check_out)
 
 
-def test_money_is_rounded_to_cents(engine):
+def test_money_is_rounded_to_cents(engine, monkeypatch):
+    original = booking_service.hotel_service.revalidate_hotel
+    def quote_9999(info):
+        return original(info).model_copy(update={
+            "current_price_per_night": 99.99,
+            "provider_base_total": 199.98,
+            "likehome_reservation_total": 209.98,
+            "likehome_payment_amount": 226.78,
+        })
+    # Fixture default quote is intentionally independent of submitted price.
+    monkeypatch.setattr(booking_service.hotel_service, "revalidate_hotel", quote_9999)
     with Session(engine) as db:
         response = booking_service.create_booking(
-            db,
-            request(price_per_night=99.99, check_out_date=date(2026, 11, 3)),
-            7,
+            db, request(price_per_night=99.99, check_out_date=date(2026, 11, 3)), 7,
         )
     with Session(engine) as db:
         assert db.get(Reservation, response.reservation_id).total_price == pytest.approx(209.98)
@@ -112,7 +146,7 @@ def test_money_is_rounded_to_cents(engine):
 
 @pytest.mark.parametrize(
     "missing_field",
-    ["hotel_name", "hotel_token", "room_type_name", "check_in_date", "check_out_date", "price_per_night"],
+    ["hotel_token", "q", "check_in_date", "check_out_date", "price_per_night", "accepted_payment_amount"],
 )
 def test_database_required_fields_are_request_required(missing_field):
     fields = request().model_dump()
@@ -124,26 +158,40 @@ def test_database_required_fields_are_request_required(missing_field):
 @pytest.mark.parametrize("price", [0, -1, float("inf"), float("nan")])
 def test_invalid_nightly_price_is_rejected(price):
     with pytest.raises(ValidationError):
-        request(price_per_night=price)
+        request(price_per_night=price, accepted_payment_amount=113.40)
 
 
-def test_rounding_to_zero_and_oversized_total_are_rejected(engine):
+def test_unaccepted_price_is_rejected_without_writes(engine):
     with Session(engine) as db:
         with pytest.raises(HTTPException) as zero:
-            booking_service.create_booking(db, request(price_per_night=0.001), 7)
-        assert zero.value.status_code == 422
-        with pytest.raises(HTTPException) as too_large:
-            booking_service.create_booking(
-                db, request(price_per_night=99999999, check_out=date(2026, 11, 4)), 7
-            )
-        assert too_large.value.status_code == 422
+            booking_service.create_booking(db, request(price_per_night=0.001, accepted_payment_amount=113.40), 7)
+        assert zero.value.status_code == 409
+        with pytest.raises(HTTPException) as changed:
+            booking_service.create_booking(db, request(price_per_night=1), 7)
+        assert changed.value.status_code == 409
+        with pytest.raises(HTTPException) as changed_total:
+            booking_service.create_booking(db, request(accepted_payment_amount=1), 7)
+        assert changed_total.value.status_code == 409
     with Session(engine) as db:
         assert db.query(Hotel).count() == 0
 
 
+def test_provider_unavailable_prevents_booking_write(engine, monkeypatch):
+    def unavailable(_):
+        raise HTTPException(status_code=409, detail="No usable rate for this stay; search again")
+    monkeypatch.setattr(booking_service.hotel_service, "revalidate_hotel", unavailable)
+    with Session(engine) as db:
+        with pytest.raises(HTTPException) as error:
+            booking_service.create_booking(db, request(), 7)
+        assert error.value.status_code == 409
+    with Session(engine) as db:
+        assert db.query(Reservation).count() == 0
+        assert db.query(Payment).count() == 0
+
+
 def test_existing_hotel_and_room_are_reused_by_token(engine):
     with Session(engine) as db:
-        first = booking_service.create_booking(db, request(), user_id=7)
+        first = booking_service.create_booking(db, request(hotel_name="Browser supplied", room_type_name="Penthouse"), user_id=7)
         second = booking_service.create_booking(
             db,
             request(hotel_name="Renamed by browser", check_in_date=date(2026, 11, 5), check_out_date=date(2026, 11, 6)),
@@ -153,6 +201,8 @@ def test_existing_hotel_and_room_are_reused_by_token(engine):
         assert first.room_type_id == second.room_type_id
         assert db.query(Hotel).count() == 1
         assert db.query(RoomType).count() == 1
+        assert db.get(Hotel, first.hotel_id).name == "Hotel A"
+        assert db.get(RoomType, first.room_type_id).type_name == "Lowest available rate"
 
 
 def test_cancelled_stay_no_longer_blocks_overlap_but_confirmed_stay_does(engine):
