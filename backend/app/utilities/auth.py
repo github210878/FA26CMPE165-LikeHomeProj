@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config.config import Config
 from app.config.database import get_db
 from app.repositories import user_dao
+from app.repositories import partner_dao
 
 load_dotenv()
 
@@ -153,3 +154,23 @@ def get_current_user_id(
         raise _authentication_error("Session is no longer valid")
 
     return user_id
+
+
+def get_current_partner_id(
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> int:
+    """Authorize a request for an existing, active partner.
+
+    This dependency is intentionally read-only with respect to partner status.
+    Authentication must never reactivate a soft-deleted account.
+    """
+
+    payload = decode_access_token(credentials)
+    partner_id = int(payload["sub"])
+    partner = partner_dao.get_partner_by_id(db=db, partner_id=partner_id)
+
+    if not partner:
+        raise _authentication_error("Partner does not exist")
+
+    return partner_id

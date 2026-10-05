@@ -5,6 +5,7 @@ from typing import Literal
 
 class BookingRequest(BaseModel):
     hotel_name: str | None = Field(default="Unknown", max_length=5000)
+    hotel_token: str | None = Field(default=None, max_length=255)
     hotel_description: str | None = Field(default=None, max_length=5000)
     hotel_street: str | None = Field(default=None, max_length=255)
     hotel_city: str | None = Field(default=None, max_length=100)

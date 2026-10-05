@@ -9,6 +9,8 @@ class Hotel(Base):
 
     hotel_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
+    hotel_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     description: Mapped[str | None] = mapped_column(String(5000))
