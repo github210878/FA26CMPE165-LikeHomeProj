@@ -162,6 +162,24 @@ before this change have no type and are rejected; signed-in users and partners
 must sign in again after deployment. Login response fields and the Bearer
 header contract are unchanged.
 
+### Booking creation contract
+
+`POST /bookings/create` requires a user Bearer token. The request supplies a
+hotel property token, hotel/room descriptions, stay dates, and a nightly price;
+the authenticated user ID is supplied by the server. Check-out must follow
+check-in. The server calculates nights and rounds monetary amounts to cents.
+The reservation total is nightly price times nights times the existing 1.05
+service-fee multiplier. The recorded booking Payment amount applies the existing
+1.08 tax multiplier to that total. Its initial status is `pending`; creating
+this row does not charge a card. Hotel, room, reservation, and payment writes
+commit together or roll back together.
+
+The submitted nightly price and property token are not independently
+revalidated against a stay-specific offer. Cached search prices do not verify
+the selected dates, occupancy, currency, availability, or rate. This endpoint
+must not be treated as a trusted checkout price or payment confirmation until
+a separate rate-revalidation contract exists.
+
 ### User sign up:
 
 - API: `/user/register`

@@ -63,6 +63,7 @@ def test_booking_requires_external_token_and_uses_hotel_model_field(monkeypatch)
         hotel_name="Hotel A",
         check_in_date=date(2026, 10, 5),
         check_out_date=date(2026, 10, 8),
+        room_type_name="Standard",
         price_per_night=100,
     )
     with pytest.raises(ValidationError):
@@ -83,8 +84,15 @@ def test_booking_requires_external_token_and_uses_hotel_model_field(monkeypatch)
         raise RuntimeError("stop before any persistence")
 
     monkeypatch.setattr(booking_service.booking_dao, "is_hotel_in_db", capture_hotel)
-    with pytest.raises(RuntimeError, match="stop before any persistence"):
-        booking_service.create_booking(object(), request, user_id=7)
+    from fastapi import HTTPException
+
+    class FakeDb:
+        def rollback(self):
+            pass
+
+    with pytest.raises(HTTPException) as error:
+        booking_service.create_booking(FakeDb(), request, user_id=7)
+    assert error.value.status_code == 500
     assert captured["hotel"].hotel_token == "real-property-1"
 
 

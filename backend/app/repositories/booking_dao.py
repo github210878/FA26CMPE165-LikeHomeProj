@@ -107,6 +107,13 @@ def create_payment(db: Session, payment):
     return payment
 
 
+def stage_booking_record(db: Session, record):
+    """Assign generated IDs during booking creation without committing."""
+    db.add(record)
+    db.flush()
+    return record
+
+
 def get_all_booking_by_user_id(db: Session, user_id: int):
 
     res = (
@@ -242,6 +249,7 @@ def check_if_user_booked_by_date_range(
         db.query(Reservation)
         .filter(
             Reservation.user_id == user_id,
+            Reservation.status != "cancelled",
             Reservation.check_in_date < check_out_date,
             Reservation.check_out_date > check_in_date,
         )

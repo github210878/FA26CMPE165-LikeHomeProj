@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.schemas.booking_schema import (
     BookingRequest,
+    BookingResponse,
     CancellationResponse,
 )
 from app.services import booking_service
@@ -15,7 +16,7 @@ router = APIRouter(
 )
 
 
-@router.post("/create")
+@router.post("/create", response_model=BookingResponse)
 def create_booking(
     booking_info: BookingRequest,
     db: Session = Depends(get_db),

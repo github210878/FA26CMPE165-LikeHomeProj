@@ -1,8 +1,8 @@
 from tokenize import String
-from sqlalchemy import Float, String, Integer, DateTime, Enum
+from sqlalchemy import Float, String, Integer, Date, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column
 from app.config.database import Base
-from datetime import datetime
+from datetime import date, datetime
 
 
 class Reservation(Base):
@@ -16,9 +16,9 @@ class Reservation(Base):
 
     room_type_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    check_in_date: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    check_in_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    check_out_date: Mapped[DateTime] = mapped_column(DateTime, nullable=False)
+    check_out_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     total_price: Mapped[float] = mapped_column(Float, nullable=False)
 

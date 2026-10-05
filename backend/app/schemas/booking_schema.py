@@ -1,9 +1,11 @@
-from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from datetime import date
 from typing import Literal
 
 
 class BookingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     hotel_name: str = Field(min_length=1, max_length=255)
     hotel_token: str = Field(min_length=1, max_length=255)
     hotel_description: str | None = Field(default=None, max_length=5000)
@@ -15,9 +17,9 @@ class BookingRequest(BaseModel):
     hotel_phone: str | None = Field(default=None, max_length=100)
     check_in_date: date
     check_out_date: date
-    room_type_name: str | None = Field(default=None, max_length=100)
+    room_type_name: str = Field(min_length=1, max_length=100)
     room_type_description: str | None = Field(default=None, max_length=500)
-    price_per_night: float
+    price_per_night: float = Field(gt=0, le=99999999.99, allow_inf_nan=False)
 
     @field_validator("hotel_token")
     @classmethod
@@ -26,6 +28,12 @@ class BookingRequest(BaseModel):
         if not token or token.startswith(("legacy:", "partner:")):
             raise ValueError("A SerpApi property token is required")
         return token
+
+    @model_validator(mode="after")
+    def checkout_after_checkin(self) -> "BookingRequest":
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("check_out_date must be after check_in_date")
+        return self
 
 
 class BookingResponse(BaseModel):
