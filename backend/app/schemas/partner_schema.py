@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PartnerRegisterRequest(BaseModel):
-    user_name: str | None = Field(default="Unknown", max_length=100)
+    user_name: str = Field(min_length=1, max_length=100)
     password: str = Field(max_length=15)
-    hotel_name: str | None = Field(default="Unknown", max_length=255)
+    hotel_name: str = Field(min_length=1, max_length=255)
     hotel_token: str | None = Field(default=None, max_length=255)
     hotel_description: str | None = Field(default=None, max_length=5000)
     hotel_street: str | None = Field(default=None, max_length=255)
@@ -13,6 +13,16 @@ class PartnerRegisterRequest(BaseModel):
     hotel_zip_code: str | None = Field(default=None, max_length=20)
     hotel_country: str | None = Field(default=None, max_length=100)
     hotel_phone: str | None = Field(default=None, max_length=100)
+
+    @field_validator("hotel_token")
+    @classmethod
+    def validate_external_token(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        token = value.strip()
+        if not token or token.startswith(("legacy:", "partner:")):
+            raise ValueError("hotel_token must be a real property token when provided")
+        return token
 
 
 class PartnerRegisterResponse(BaseModel):

@@ -52,6 +52,7 @@ def login_user(login_info: LoginUserRequest, db: Session):
     access_token = create_access_token(
         user.user_id,
         session_version=getattr(user, "session_version", 0),
+        subject_type="user",
     )
 
     return LoginUserResponse(

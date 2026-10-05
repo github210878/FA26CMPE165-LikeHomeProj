@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from uuid import uuid4
 from app.models.partner_model import HotelPartner as Partner
 from app.schemas.partner_schema import (
     PartnerLoginRequest,
@@ -19,9 +20,10 @@ PASSWORD_HASHER = PasswordHash.recommended()
 def register_partner(
     db: Session, partner_info: PartnerRegisterRequest
 ) -> PartnerRegisterResponse:
+    hotel_token = partner_info.hotel_token or f"partner:{uuid4()}"
     hotel = Hotel(
         name=partner_info.hotel_name,
-        hotel_token=partner_info.hotel_token,
+        hotel_token=hotel_token,
         description=partner_info.hotel_description,
         street=partner_info.hotel_street,
         city=partner_info.hotel_city,
@@ -38,7 +40,7 @@ def register_partner(
 
     new_partner = Partner(
         user_name=partner_info.user_name,
-        hotel_token=partner_info.hotel_token,
+        hotel_token=hotel_token,
         password_hash=PASSWORD_HASHER.hash(partner_info.password),
         hotel_id=hotel_id,
     )
@@ -62,6 +64,7 @@ def login_partner(
     access_token = create_access_token(
         partner.partner_id,
         session_version=getattr(partner, "session_version", 0),
+        subject_type="partner",
     )
 
     return PartnerLoginResponse(
@@ -72,10 +75,7 @@ def login_partner(
 
 
 def get_hotel_id_by_partner_id(db: Session, partner_id: int) -> int | None:
-    partner = partner_dao.get_hotel_id_by_partner_id(db, partner_id)
-    if partner:
-        return partner.hotel_id
-    return None
+    return partner_dao.get_hotel_id_by_partner_id(db, partner_id)
 
 
 def check_booking(db: Session, partner_id: int):

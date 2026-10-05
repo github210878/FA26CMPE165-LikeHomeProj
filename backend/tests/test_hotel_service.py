@@ -19,6 +19,11 @@ from app.utilities.serpapi_client import (
 )
 
 
+@pytest.fixture(autouse=True)
+def disable_cache_for_mapping_tests(monkeypatch):
+    monkeypatch.setattr(hotel_service, "_cache_hotels", lambda **_: None)
+
+
 def make_request(**overrides):
     defaults = dict(
         q="San Jose hotels",
@@ -61,7 +66,7 @@ def test_full_property_maps_all_fields(monkeypatch):
         lambda params: {"properties": [FULL_PROPERTY]},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.result_count == 1
     hotel = result.properties[0]
@@ -85,7 +90,7 @@ def test_property_missing_optional_fields_does_not_crash(monkeypatch):
         lambda params: {"properties": [sparse_property]},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     hotel = result.properties[0]
     assert hotel.name == "Bare Bones Inn"
@@ -105,7 +110,7 @@ def test_property_with_no_images_has_none_thumbnail(monkeypatch):
         lambda params: {"properties": [property_without_images]},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.properties[0].thumbnail is None
 
@@ -118,7 +123,7 @@ def test_multiple_properties_preserve_count_and_order(monkeypatch):
         lambda params: {"properties": properties},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.result_count == 3
     assert [p.name for p in result.properties] == ["Hotel A", "Hotel B", "Hotel C"]
@@ -139,7 +144,7 @@ def test_malformed_property_fields_do_not_break_search(monkeypatch):
         lambda params: {"properties": [malformed_property]},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     hotel = result.properties[0]
     assert hotel.name == "Hotel Testa"
@@ -157,7 +162,7 @@ def test_non_property_items_are_skipped(monkeypatch):
         lambda params: {"properties": [None, "bad item", {"name": "Hotel A"}]},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.result_count == 1
     assert result.properties[0].name == "Hotel A"
@@ -175,7 +180,7 @@ def test_empty_properties_list_is_not_an_error(monkeypatch):
         lambda params: {"properties": []},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.result_count == 0
     assert result.properties == []
@@ -188,7 +193,7 @@ def test_missing_properties_key_is_treated_as_no_results(monkeypatch):
         lambda params: {"search_metadata": {"status": "Success"}},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.result_count == 0
     assert result.properties == []
@@ -206,7 +211,7 @@ def test_config_error_becomes_http_500(monkeypatch):
     monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", raise_config_error)
 
     with pytest.raises(HTTPException) as exc_info:
-        hotel_service.search_hotels(make_request())
+        hotel_service.search_hotels(make_request(), db=object())
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Hotel search service is not configured"
@@ -219,7 +224,7 @@ def test_timeout_error_becomes_http_504(monkeypatch):
     monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", raise_timeout)
 
     with pytest.raises(HTTPException) as exc_info:
-        hotel_service.search_hotels(make_request())
+        hotel_service.search_hotels(make_request(), db=object())
 
     assert exc_info.value.status_code == 504
     assert exc_info.value.detail == "Hotel search service timed out"
@@ -233,7 +238,7 @@ def test_request_and_response_errors_become_http_502(monkeypatch, error_cls):
     monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", raise_error)
 
     with pytest.raises(HTTPException) as exc_info:
-        hotel_service.search_hotels(make_request())
+        hotel_service.search_hotels(make_request(), db=object())
 
     assert exc_info.value.status_code == 502
 
@@ -249,7 +254,7 @@ def test_serpapi_error_detail_is_not_exposed(monkeypatch):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        hotel_service.search_hotels(make_request())
+        hotel_service.search_hotels(make_request(), db=object())
 
     assert exc_info.value.status_code == 502
     assert exc_info.value.detail == "Hotel search service returned an error"
@@ -270,7 +275,8 @@ def test_service_forwards_all_search_fields_to_client(monkeypatch):
     monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", fake_search)
 
     hotel_service.search_hotels(
-        make_request(q="Bali resorts", adults=4, children=2, currency="EUR", gl="fr", hl="fr")
+        make_request(q="Bali resorts", adults=4, children=2, currency="EUR", gl="fr", hl="fr"),
+        db=object(),
     )
 
     assert captured["q"] == "Bali resorts"
@@ -296,7 +302,7 @@ def test_next_page_token_is_returned(monkeypatch):
         },
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.next_page_token == "next-page-123"
 
@@ -315,7 +321,7 @@ def test_next_page_token_is_forwarded_to_serpapi(monkeypatch):
     )
 
     hotel_service.search_hotels(
-        make_request(next_page_token="next-page-123")
+        make_request(next_page_token="next-page-123"), db=object()
     )
 
     assert captured["next_page_token"] == "next-page-123"
@@ -328,6 +334,6 @@ def test_missing_next_page_token_returns_none(monkeypatch):
         lambda params: {"properties": []},
     )
 
-    result = hotel_service.search_hotels(make_request())
+    result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.next_page_token is None

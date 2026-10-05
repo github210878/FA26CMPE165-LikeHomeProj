@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { loginErrorMessage } from "@/lib/auth";
 
-export default function LoginForm() {
+export default function LoginForm({ returnTo }: { returnTo?: string | null }) {
   const router = useRouter();
   const { status, signIn } = useAuth();
   const [email, setEmail] = useState("");
@@ -23,7 +23,7 @@ export default function LoginForm() {
     try {
       await signIn({ email: email.trim(), password });
       setPassword("");
-      router.replace("/");
+      router.replace(returnTo ?? "/");
     } catch (failure) {
       setPassword("");
       setError(loginErrorMessage(failure));
@@ -37,7 +37,7 @@ export default function LoginForm() {
   }
 
   if (status === "authenticated") {
-    return <p className="mt-8 text-sm text-slate-700">You are signed in. <Link href="/" className="font-medium text-teal-700 underline">Go to the home page</Link>.</p>;
+    return <p className="mt-8 text-sm text-slate-700">You are signed in. <Link href={returnTo ?? "/"} className="font-medium text-teal-700 underline">Continue</Link>.</p>;
   }
 
   return (

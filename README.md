@@ -295,6 +295,16 @@ Run backend tests with `python -m pytest -q -p no:cacheprovider tests`.
   the bearer token.
 - Booking and payment detail/cancellation routes filter by both the requested
   record ID and the authenticated user's ID.
+- `POST /bookings/cancel-booking/{reservation_id}` returns HTTP 404 for a missing
+  or non-owned reservation, HTTP 409 for an already cancelled/completed booking
+  or ambiguous payment records, and HTTP 500 without database details if the
+  transaction fails. A successful response includes `reservation_id`, `status`,
+  `booking_payment_id`, `booking_payment_status`, `cancellation_payment_id`,
+  `cancellation_amount`, and `cancellation_payment_status`.
+- Cancellation records the booking payment as `refunded` and a pending
+  cancellation payment equal to 20% of the reservation total in one database
+  transaction. This is database bookkeeping only; no external payment or refund
+  is processed.
 
 
 ### Frontend

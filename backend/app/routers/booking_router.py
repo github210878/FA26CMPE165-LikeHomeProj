@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.schemas.booking_schema import (
     BookingRequest,
+    BookingResponse,
+    CancellationResponse,
 )
 from app.services import booking_service
 from app.utilities.auth import get_current_user_id
@@ -14,7 +16,7 @@ router = APIRouter(
 )
 
 
-@router.post("/create")
+@router.post("/create", response_model=BookingResponse)
 def create_booking(
     booking_info: BookingRequest,
     db: Session = Depends(get_db),
@@ -75,7 +77,7 @@ def get_payment_details(
     return booking_service.get_payment_by_id(db, payment_id, user_id)
 
 
-@router.post("/cancel-booking/{reservation_id}")
+@router.post("/cancel-booking/{reservation_id}", response_model=CancellationResponse)
 def cancel_booking(
     reservation_id: int,
     db: Session = Depends(get_db),

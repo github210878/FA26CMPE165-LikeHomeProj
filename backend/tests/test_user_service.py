@@ -96,7 +96,7 @@ def test_login_returns_access_token_for_active_user(monkeypatch):
     monkeypatch.setattr(
         user_service,
         "create_access_token",
-        lambda user_id, session_version=0: "token-123",
+        lambda user_id, session_version=0, subject_type=None: "token-123",
     )
 
     result = user_service.login_user(

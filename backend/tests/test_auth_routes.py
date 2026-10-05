@@ -43,7 +43,7 @@ def test_users_me_accepts_a_valid_active_user_token(client, monkeypatch):
         "get_user_by_id",
         lambda **_: make_user(),
     )
-    token = auth.create_access_token(7)
+    token = auth.create_access_token(7, subject_type="user")
 
     response = client.get(
         "/users/me",
@@ -61,7 +61,7 @@ def test_users_me_rejects_deleted_user_without_reactivating_it(client, monkeypat
         "get_user_by_id",
         lambda **_: deleted_user,
     )
-    token = auth.create_access_token(7)
+    token = auth.create_access_token(7, subject_type="user")
 
     response = client.get(
         "/users/me",

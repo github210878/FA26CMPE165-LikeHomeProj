@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import ForeignKey, Integer, String, TIMESTAMP, text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.config.database import Base
@@ -27,8 +29,9 @@ class HotelPartner(Base):
         nullable=False,
     )
 
-    created_at: Mapped[object] = mapped_column(
+    created_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP,
+        nullable=True,
         server_default=text("CURRENT_TIMESTAMP"),
     )
 

@@ -15,6 +15,6 @@ class RoomType(Base):
 
     type_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    description: Mapped[str | None] = mapped_column(String(5000))
+    description: Mapped[str | None] = mapped_column(String(500))
 
     price_per_night: Mapped[float] = mapped_column(Float, nullable=False)

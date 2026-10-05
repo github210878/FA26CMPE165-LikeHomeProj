@@ -1,95 +1,125 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.models.hotel import Hotel
 from app.schemas.booking_schema import (
     BookingResponse,
     BookingRequest,
+    CancellationResponse,
 )
 from app.models.payment import Payment
 from app.repositories import booking_dao
 from app.config.constants import Constants
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
+from app.schemas.hotel_schema import HotelRevalidationRequest
+from app.services import hotel_service
 
-# constants
-sale_tax = Constants.SALE_TAX
-service_fee = Constants.SERVICE_FEE
 cancellation_fee = Constants.CANCELLATION_FEE
+MONEY_CENT = Decimal("0.01")
+MAX_MONEY = Decimal("99999999.99")  # DECIMAL(10, 2) in the initialization SQL
 
 
-def create_booking(db: Session, booking_info: BookingRequest, user_id: int):
+def _money(value: Decimal) -> Decimal:
+    return value.quantize(MONEY_CENT, rounding=ROUND_HALF_UP)
 
-    booked = booking_dao.check_if_user_booked_by_date_range(
-        db,
-        user_id,
-        booking_info.check_in_date,
-        booking_info.check_out_date,
-    )
 
-    if booked:
-        raise HTTPException(
-            status_code=400,
-            detail="User already has a booking that overlaps with the given date.",
+def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> BookingResponse:
+    """Recheck the accepted property quote before one atomic local booking write."""
+    try:
+        nights = (booking_info.check_out_date - booking_info.check_in_date).days
+        if nights <= 0:
+            raise HTTPException(status_code=422, detail="Check-out must be after check-in")
+
+        quote = hotel_service.revalidate_hotel(
+            HotelRevalidationRequest(
+                property_token=booking_info.hotel_token,
+                q=booking_info.q,
+                check_in_date=booking_info.check_in_date,
+                check_out_date=booking_info.check_out_date,
+                adults=booking_info.adults,
+                children=booking_info.children,
+                currency=booking_info.currency,
+                gl=booking_info.gl,
+                hl=booking_info.hl,
+            )
         )
+        nightly_price = _money(Decimal(str(quote.current_price_per_night)))
+        payment_amount = _money(Decimal(str(quote.likehome_payment_amount)))
+        if (
+            _money(Decimal(str(booking_info.price_per_night))) != nightly_price
+            or _money(Decimal(str(booking_info.accepted_payment_amount))) != payment_amount
+        ):
+            raise HTTPException(status_code=409, detail="Rate changed; revalidate and review the current quote")
+        total_price = Decimal(str(quote.likehome_reservation_total))
+        if nightly_price > MAX_MONEY or total_price > MAX_MONEY or payment_amount > MAX_MONEY:
+            raise HTTPException(status_code=422, detail="Booking amount exceeds supported range")
 
-    hotel = Hotel(
-        name=booking_info.hotel_name,
-        token=booking_info.hotel_token,
-        description=booking_info.hotel_description,
-        street=booking_info.hotel_street,
-        city=booking_info.hotel_city,
-        state=booking_info.hotel_state,
-        zip_code=booking_info.hotel_zip_code,
-        country=booking_info.hotel_country,
-        phone=booking_info.hotel_phone,
-    )
+        booked = booking_dao.check_if_user_booked_by_date_range(
+            db, user_id, booking_info.check_in_date, booking_info.check_out_date
+        )
+        if booked:
+            raise HTTPException(
+                status_code=400,
+                detail="User already has a booking that overlaps with the given date.",
+            )
 
-    check_hotel = booking_dao.is_hotel_in_db(db, hotel)
-    if check_hotel is None:
-        hotel = booking_dao.create_hotel(db, hotel)
-    else:
-        hotel.hotel_id = check_hotel
+        hotel = Hotel(
+            name=quote.hotel_name,
+            hotel_token=quote.property_token,
+        )
+        hotel_id = booking_dao.is_hotel_in_db(db, hotel)
+        if hotel_id is None:
+            hotel_id = booking_dao.stage_booking_record(db, hotel).hotel_id
 
-    room_type = RoomType(
-        hotel_id=hotel.hotel_id,
-        type_name=booking_info.room_type_name,
-        description=booking_info.room_type_description,
-        price_per_night=booking_info.price_per_night,
-    )
+        room_type = RoomType(
+            hotel_id=hotel_id,
+            type_name="Lowest available rate",
+            description=f"Provider: {quote.source[:480]}",
+            price_per_night=float(nightly_price),
+        )
+        room_type_id = booking_dao.is_room_type_in_db(db, room_type)
+        if room_type_id is None:
+            room_type_id = booking_dao.stage_booking_record(db, room_type).room_type_id
 
-    check_room_type = booking_dao.is_room_type_in_db(db, room_type)
-    if check_room_type is None:
-        room_type = booking_dao.create_room_type(db, room_type)
-    else:
-        room_type.room_type_id = check_room_type
-
-    reservation = Reservation(
-        user_id=user_id,
-        room_type_id=room_type.room_type_id,
-        check_in_date=booking_info.check_in_date,
-        check_out_date=booking_info.check_out_date,
-        total_price=room_type.price_per_night * service_fee,
-        status="confirmed",
-    )
-
-    reservation = booking_dao.create_reservation(db, reservation)
-
-    payment = Payment(
-        reservation_id=reservation.reservation_id,
-        amount=reservation.total_price * sale_tax,
-        payment_type="booking",
-        payment_status="Pending",
-    )
-
-    payment = booking_dao.create_payment(db, payment)
-
-    return BookingResponse(
-        user_id=user_id,
-        hotel_id=hotel.hotel_id,
-        room_type_id=room_type.room_type_id,
-        reservation_id=reservation.reservation_id,
-        payment_id=payment.payment_id,
-    )
+        reservation = booking_dao.stage_booking_record(
+            db,
+            Reservation(
+                user_id=user_id,
+                room_type_id=room_type_id,
+                guest_full_name=booking_info.guest_full_name,
+                guest_email=booking_info.guest_email,
+                check_in_date=booking_info.check_in_date,
+                check_out_date=booking_info.check_out_date,
+                total_price=float(total_price),
+                status="confirmed",
+            ),
+        )
+        payment = booking_dao.stage_booking_record(
+            db,
+            Payment(
+                reservation_id=reservation.reservation_id,
+                amount=float(payment_amount),
+                payment_type="booking",
+                payment_status="pending",
+            ),
+        )
+        response = BookingResponse(
+            user_id=user_id,
+            hotel_id=hotel_id,
+            room_type_id=room_type_id,
+            reservation_id=reservation.reservation_id,
+            payment_id=payment.payment_id,
+        )
+        db.commit()
+        return response
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create reservation") from exc
 
 
 def get_all_booking_by_user_id(db: Session, user_id: int):
@@ -108,35 +138,55 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     return booking_dao.get_payment_by_id(db, payment_id, user_id)
 
 
-def cancel_booking(db: Session, booking_id: int, user_id: int):
-    reservation = booking_dao.get_booking_by_id(db, booking_id, user_id)
-    if not reservation:
-        raise HTTPException(status_code=404, detail="Reservation not found")
+def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationResponse:
+    """Record a cancellation atomically; this does not process an external refund."""
+    try:
+        reservation = booking_dao.get_reservation_for_cancellation(
+            db, booking_id, user_id
+        )
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="Reservation not found")
+        if reservation.status != "confirmed":
+            raise HTTPException(
+                status_code=409, detail="Reservation cannot be cancelled"
+            )
 
-    updated_reservation = booking_dao.cancel_booking(db, booking_id, user_id)
-    if not updated_reservation:
-        raise HTTPException(status_code=404, detail="Fail to cancel reservation")
+        payments = booking_dao.get_payments_for_cancellation(
+            db, reservation.reservation_id
+        )
+        booking_payments = [p for p in payments if p.payment_type == "booking"]
+        if len(booking_payments) != 1 or any(
+            p.payment_type == "cancellation" for p in payments
+        ):
+            raise HTTPException(
+                status_code=409, detail="Reservation payment state is ambiguous"
+            )
 
-    payment = booking_dao.get_payment_by_booking_id(db, booking_id, user_id)
-    if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
-
-    updated_payment = booking_dao.update_payment_status(
-        db, payment.payment_id, "refunded"
-    )
-    if not updated_payment:
-        raise HTTPException(status_code=404, detail="Fail to update payment")
-
-    cancellation_payment = Payment(
-        reservation_id=reservation["reservation_id"],
-        amount=reservation["total_price"] * cancellation_fee,
-        payment_type="cancellation",
-        payment_status="Pending",
-    )
-
-    payment = booking_dao.create_payment(db, cancellation_payment)
-
-    return {
-        "reservation": reservation,
-        "cancellation_payment": cancellation_payment,
-    }
+        booking_payment = booking_payments[0]
+        reservation.status = "cancelled"
+        booking_payment.payment_status = "refunded"
+        cancellation_payment = Payment(
+            reservation_id=reservation.reservation_id,
+            amount=reservation.total_price * cancellation_fee,
+            payment_type="cancellation",
+            payment_status="pending",
+        )
+        db.add(cancellation_payment)
+        db.flush()
+        response = CancellationResponse(
+            reservation_id=reservation.reservation_id,
+            status=reservation.status,
+            booking_payment_id=booking_payment.payment_id,
+            booking_payment_status=booking_payment.payment_status,
+            cancellation_payment_id=cancellation_payment.payment_id,
+            cancellation_amount=cancellation_payment.amount,
+            cancellation_payment_status=cancellation_payment.payment_status,
+        )
+        db.commit()
+        return response
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to cancel reservation") from exc

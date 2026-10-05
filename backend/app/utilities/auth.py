@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 import jwt
 from dotenv import load_dotenv
@@ -26,6 +26,8 @@ JWT_EXPIRE_MINUTES = Config.JWT_EXPIRE_MINUTES
 # auto_error=False lets the dependency return a consistent 401 for a missing
 # or malformed Authorization header instead of FastAPI's default 403.
 bearer_scheme = HTTPBearer(auto_error=False)
+SubjectType = Literal["user", "partner"]
+SUBJECT_TYPES = ("user", "partner")
 
 
 def _authentication_error(detail: str) -> HTTPException:
@@ -36,23 +38,29 @@ def _authentication_error(detail: str) -> HTTPException:
     )
 
 
-def create_access_token(user_id: int, session_version: int = 0) -> str:
-    """Create a short-lived access token for an active user."""
+def create_access_token(
+    subject_id: int, session_version: int = 0, *, subject_type: SubjectType
+) -> str:
+    """Create a short-lived, account-type-bound access token."""
 
     if not JWT_SECRET_KEY:
         raise RuntimeError("JWT_SECRET_KEY is not configured")
 
-    if user_id <= 0:
-        raise ValueError("user_id must be positive")
+    if subject_id <= 0:
+        raise ValueError("subject_id must be positive")
 
     if session_version < 0:
         raise ValueError("session_version cannot be negative")
+
+    if subject_type not in SUBJECT_TYPES:
+        raise ValueError("Invalid subject type")
 
     issued_at = datetime.now(timezone.utc)
     expiration = issued_at + timedelta(minutes=JWT_EXPIRE_MINUTES)
 
     payload = {
-        "sub": str(user_id),
+        "sub": str(subject_id),
+        "type": subject_type,
         "ver": session_version,
         "iat": issued_at,
         "exp": expiration,
@@ -85,12 +93,15 @@ def decode_access_token(
             credentials.credentials,
             JWT_SECRET_KEY,
             algorithms=[JWT_ALGORITHM],
-            options={"require": ["exp", "sub"]},
+            options={"require": ["exp", "sub", "type"]},
         )
     except InvalidTokenError as exc:
         raise _authentication_error("Invalid or expired authentication token") from exc
 
     if not isinstance(payload, dict):
+        raise _authentication_error("Invalid authentication token")
+
+    if payload.get("type") not in SUBJECT_TYPES:
         raise _authentication_error("Invalid authentication token")
 
     raw_user_id = payload.get("sub")
@@ -126,10 +137,15 @@ def decode_access_token(
 
 def verify_access_token(
     credentials: HTTPAuthorizationCredentials | None,
+    *,
+    subject_type: SubjectType = "user",
 ) -> int:
-    """Validate a bearer token and return the authenticated user's ID."""
+    """Validate claims for the expected account type without a DB lookup."""
 
-    return int(decode_access_token(credentials)["sub"])
+    payload = decode_access_token(credentials)
+    if payload["type"] != subject_type:
+        raise _authentication_error("Invalid authentication token")
+    return int(payload["sub"])
 
 
 def get_current_user_id(
@@ -143,6 +159,8 @@ def get_current_user_id(
     """
 
     payload = decode_access_token(credentials)
+    if payload["type"] != "user":
+        raise _authentication_error("Invalid authentication token")
     user_id = int(payload["sub"])
     user = user_dao.get_user_by_id(db=db, user_id=user_id)
 
@@ -167,10 +185,16 @@ def get_current_partner_id(
     """
 
     payload = decode_access_token(credentials)
+    if payload["type"] != "partner":
+        raise _authentication_error("Invalid authentication token")
     partner_id = int(payload["sub"])
     partner = partner_dao.get_partner_by_id(db=db, partner_id=partner_id)
 
     if not partner:
         raise _authentication_error("Partner does not exist")
+
+    current_session_version = getattr(partner, "session_version", 0) or 0
+    if payload["ver"] != current_session_version:
+        raise _authentication_error("Session is no longer valid")
 
     return partner_id

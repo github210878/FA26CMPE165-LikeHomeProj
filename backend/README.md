@@ -140,6 +140,55 @@ backend/
 
 Run backend tests with `python -m pytest -q -p no:cacheprovider tests`.
 
+### Hotel database upgrade
+
+Databases created before the hotel token/cache/partner schema change need the
+one-time `database/migrations/002_add_hotel_tokens_cache_and_partners.sql`
+migration. A fresh database created from `database/like_home_database_init.sql`
+already has these objects and must not run this migration. Back up an existing
+database before applying it; MySQL DDL commits implicitly. Apply the earlier
+session-version migration separately if that column is also missing.
+
+The migration preserves existing Hotel rows and assigns each one an internal
+`legacy:<hotel_id>` token. Such tokens are not SerpApi property tokens and must
+not be used to verify property identity or pricing. A real SerpApi property
+token identifies one Hotel row uniquely. Partner-created hotels without a
+SerpApi identity receive an internal `partner:<uuid>` token. The booking create
+request now requires a real property token; cached nightly prices remain
+search display data, not an authoritative booking rate.
+
+JWTs now carry a signed account `type` (`user` or `partner`). Tokens issued
+before this change have no type and are rejected; signed-in users and partners
+must sign in again after deployment. Login response fields and the Bearer
+header contract are unchanged.
+
+### Booking creation contract
+
+`POST /bookings/create` requires a user Bearer token. The request supplies a
+hotel property token, hotel/room descriptions, stay dates, and a nightly price;
+the authenticated user ID is supplied by the server. Check-out must follow
+check-in. The server calculates nights and rounds monetary amounts to cents.
+New bookings also require one primary guest's full name and contact email.
+These fields describe the stay contact and do not change the authenticated
+reservation owner or the trusted rate. The owner-only booking-detail endpoint
+returns both fields; the My Bookings list does not include them.
+Existing databases need `database/migrations/003_add_reservation_guest_information.sql`
+after the applicable `001` and `002` migrations. New guest columns remain NULL
+for historical reservations; no account name or email is inferred for them.
+Fresh databases created from `database/like_home_database_init.sql` already
+have the columns. Do not run migration 003 on a fresh database.
+The reservation total is nightly price times nights times the existing 1.05
+service-fee multiplier. The recorded booking Payment amount applies the existing
+1.08 tax multiplier to that total. Its initial status is `pending`; creating
+this row does not charge a card. Hotel, room, reservation, and payment writes
+commit together or roll back together.
+
+The submitted nightly price and property token are not independently
+revalidated against a stay-specific offer. Cached search prices do not verify
+the selected dates, occupancy, currency, availability, or rate. This endpoint
+must not be treated as a trusted checkout price or payment confirmation until
+a separate rate-revalidation contract exists.
+
 ### User sign up:
 
 - API: `/user/register`

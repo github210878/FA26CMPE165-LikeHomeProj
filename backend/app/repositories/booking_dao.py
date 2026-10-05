@@ -10,20 +10,30 @@ from app.models.room_type import RoomType
 from app.models.user import User
 
 
+def format_hotel_address(hotel: Hotel) -> str:
+    """Keep the booking address readable when hotel address columns are null."""
+    location = ", ".join(
+        part.strip()
+        for part in (hotel.street, hotel.city, hotel.state)
+        if part and part.strip()
+    )
+    postal = " ".join(
+        part.strip()
+        for part in (hotel.zip_code, hotel.country)
+        if part and part.strip()
+    )
+    return ". ".join(part for part in (location, postal) if part)
+
+
 def is_hotel_in_db(db: Session, target_hotel: Hotel):
     """
-    Check if a hotel with the given address exists in the database.
+    A hotel token, not a mutable name or address, identifies a persisted hotel.
     """
+    if not target_hotel.hotel_token:
+        raise ValueError("hotel_token is required to look up a hotel")
     hotel = (
         db.query(Hotel)
-        .filter(
-            Hotel.name == target_hotel.name,
-            Hotel.street == target_hotel.street,
-            Hotel.city == target_hotel.city,
-            Hotel.state == target_hotel.state,
-            Hotel.zip_code == target_hotel.zip_code,
-            Hotel.country == target_hotel.country,
-        )
+        .filter(Hotel.hotel_token == target_hotel.hotel_token)
         .first()
     )
     if hotel is not None:
@@ -97,6 +107,13 @@ def create_payment(db: Session, payment):
     return payment
 
 
+def stage_booking_record(db: Session, record):
+    """Assign generated IDs during booking creation without committing."""
+    db.add(record)
+    db.flush()
+    return record
+
+
 def get_all_booking_by_user_id(db: Session, user_id: int):
 
     res = (
@@ -112,15 +129,7 @@ def get_all_booking_by_user_id(db: Session, user_id: int):
             "reservation_id": reservation.reservation_id,
             "hotel_name": hotel.name,
             "room_type_name": room_type.type_name,
-            "hotel_address": hotel.street
-            + ", "
-            + hotel.city
-            + ", "
-            + hotel.state
-            + ". "
-            + hotel.zip_code
-            + " "
-            + hotel.country,
+            "hotel_address": format_hotel_address(hotel),
             "hotel_phone": hotel.phone,
             "hotel_description": hotel.description,
             "room_description": room_type.description,
@@ -179,17 +188,11 @@ def get_booking_by_id(db: Session, booking_id: int, user_id: int):
 
     return {
         "reservation_id": reservation.reservation_id,
+        "guest_full_name": reservation.guest_full_name,
+        "guest_email": reservation.guest_email,
         "hotel_name": hotel.name,
         "room_type_name": room_type.type_name,
-        "hotel_address": hotel.street
-        + ", "
-        + hotel.city
-        + ", "
-        + hotel.state
-        + ". "
-        + hotel.zip_code
-        + " "
-        + hotel.country,
+        "hotel_address": format_hotel_address(hotel),
         "hotel_phone": hotel.phone,
         "hotel_description": hotel.description,
         "room_description": room_type.description,
@@ -248,6 +251,7 @@ def check_if_user_booked_by_date_range(
         db.query(Reservation)
         .filter(
             Reservation.user_id == user_id,
+            Reservation.status != "cancelled",
             Reservation.check_in_date < check_out_date,
             Reservation.check_out_date > check_in_date,
         )
@@ -256,46 +260,23 @@ def check_if_user_booked_by_date_range(
     )
 
 
-def cancel_booking(db: Session, reservation_id: int, user_id: int):
-    """
-    Cancel a booking by updating its status to 'cancelled'.
-    """
-    reservation = (
+def get_reservation_for_cancellation(db: Session, reservation_id: int, user_id: int):
+    """Lock only the authenticated user's reservation for cancellation."""
+    return (
         db.query(Reservation)
         .filter(Reservation.reservation_id == reservation_id)
         .filter(Reservation.user_id == user_id)
+        .with_for_update()
         .first()
     )
-    if reservation is None:
-        return None
-
-    reservation.status = "cancelled"
-    db.commit()
-    db.refresh(reservation)
-    return reservation
 
 
-def get_payment_by_booking_id(db: Session, reservation_id: int, user_id: int):
-    """
-    Retrieve the payment associated with a specific booking ID.
-    """
+def get_payments_for_cancellation(db: Session, reservation_id: int):
+    """Lock all payments after the owned reservation has been locked."""
     return (
         db.query(Payment)
-        .join(Reservation, Payment.reservation_id == Reservation.reservation_id)
-        .filter(
-            Reservation.reservation_id == reservation_id,
-            Reservation.user_id == user_id,
-        )
-        .first()
+        .filter(Payment.reservation_id == reservation_id)
+        .order_by(Payment.payment_id)
+        .with_for_update()
+        .all()
     )
-
-
-def update_payment_status(db: Session, payment_id: int, new_status: str):
-    payment = db.query(Payment).filter(Payment.payment_id == payment_id).first()
-    if payment:
-        payment.payment_status = new_status
-        db.commit()
-        db.refresh(payment)
-        return payment
-    else:
-        return None

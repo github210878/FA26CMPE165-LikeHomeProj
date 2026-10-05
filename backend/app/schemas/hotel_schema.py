@@ -1,7 +1,9 @@
 import re
 from datetime import date
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 
 class HotelSearchRequest(BaseModel):
@@ -84,3 +86,67 @@ class HotelSearchResponse(BaseModel):
     result_count: int
     properties: list[HotelSearchResult]
     next_page_token: str | None = None
+
+
+class HotelRevalidationRequest(BaseModel):
+    """Property-only selection and the stay context used for the search."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    property_token: str = Field(min_length=1, max_length=255)
+    q: str = Field(min_length=1, max_length=255)
+    check_in_date: date
+    check_out_date: date
+    adults: int = Field(ge=1, le=20)
+    children: int = Field(default=0, ge=0, le=20)
+    currency: Literal["USD"] = "USD"
+    gl: Literal["us"] = "us"
+    hl: Literal["en"] = "en"
+    displayed_price_per_night: float | None = Field(
+        default=None, gt=0, le=99999999.99, allow_inf_nan=False,
+        description="Optional search-card price used only to flag a change; never used for pricing.",
+    )
+
+    @field_validator("property_token", "q")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A nonblank value is required")
+        return value
+
+    @field_validator("property_token")
+    @classmethod
+    def provider_token(cls, value: str) -> str:
+        if value.startswith(("legacy:", "partner:")):
+            raise ValueError("A SerpApi property token is required")
+        return value
+
+    @model_validator(mode="after")
+    def valid_stay(self) -> "HotelRevalidationRequest":
+        if self.check_in_date < date.today():
+            raise ValueError("Check-in date cannot be in the past")
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("Check-out date must be after check-in date")
+        return self
+
+
+class HotelRevalidationResponse(BaseModel):
+    property_token: str
+    hotel_name: str
+    check_in_date: date
+    check_out_date: date
+    adults: int
+    children: int
+    currency: Literal["USD"]
+    number_of_nights: int
+    availability: Literal["available"]
+    rate_rule: Literal["lowest_eligible_provider_base_total"]
+    source: str
+    guest_capacity: int
+    current_price_per_night: float
+    provider_base_total: float
+    provider_total_with_taxes_fees: float | None
+    likehome_reservation_total: float
+    likehome_payment_amount: float
+    price_changed: bool | None
