@@ -2,7 +2,10 @@ import math
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-
+from sqlalchemy.orm import Session
+from app.config.database import get_db
+from app.models.cache_hotel import CacheHotel
+from app.repositories import hotel_dao
 from app.utilities import serpapi_client
 from app.utilities.serpapi_client import (
     SerpApiConfigError,
@@ -34,6 +37,7 @@ def _build_serpapi_params(search_info: HotelSearchRequest) -> dict:
         params["next_page_token"] = search_info.next_page_token
 
     return params
+
 
 def _optional_text(value: object) -> str | None:
     if not isinstance(value, str):
@@ -114,7 +118,7 @@ def _to_hotel_result(raw_property: dict) -> HotelSearchResult:
     )
 
 
-def search_hotels(search_info: HotelSearchRequest) -> HotelSearchResponse:
+def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchResponse:
     params = _build_serpapi_params(search_info)
 
     try:
@@ -145,6 +149,9 @@ def search_hotels(search_info: HotelSearchRequest) -> HotelSearchResponse:
         _to_hotel_result(item) for item in raw_properties if isinstance(item, dict)
     ]
 
+    # Cache the hotel data in the database
+    _cache_hotels(properties=properties, db=db)
+
     return HotelSearchResponse(
         search_query=search_info.q,
         check_in_date=search_info.check_in_date,
@@ -153,3 +160,22 @@ def search_hotels(search_info: HotelSearchRequest) -> HotelSearchResponse:
         properties=properties,
         next_page_token=_optional_text(raw_response.get("next_page_token")),
     )
+
+
+def _cache_hotels(
+    db: Session,
+    properties: list[HotelSearchResult],
+) -> None:
+    hotels_data = [hotel.model_dump() for hotel in properties if hotel.property_token]
+
+    hotel_dao.upsert_cache_hotels(
+        db=db,
+        hotels_data=hotels_data,
+    )
+
+
+def local_search_hotels(
+    search_info: HotelSearchRequest,
+    db: Session,
+) -> HotelSearchResponse:
+    return hotel_dao.local_search_hotels(db, search_info)

@@ -18,6 +18,7 @@ CREATE TABLE
 CREATE TABLE
     hotels (
         hotel_id INT AUTO_INCREMENT PRIMARY KEY,
+        hotel_token VARCHAR(255) NOT NULL UNIQUE,
         name VARCHAR(255) NOT NULL,
         description VARCHAR(5000),
         street VARCHAR(255),
@@ -85,5 +86,33 @@ CREATE TABLE
         hotel_id INT NOT NULL,
         url VARCHAR(500) NOT NULL,
         description VARCHAR(500),
+        FOREIGN KEY (hotel_id) REFERENCES hotels (hotel_id) ON DELETE CASCADE ON UPDATE CASCADE
+    );
+
+CREATE TABLE
+    cache_hotels (
+        property_token VARCHAR(255) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        price_per_night DECIMAL(10, 2),
+        rating DECIMAL(2, 1),
+        amenities JSON,
+        hotel_class VARCHAR(50),
+        overall_rating DECIMAL(2, 1),
+        reviews INT,
+        rate_per_night JSON,
+        total_rate JSON,
+        thumbnail TEXT,
+        link TEXT,
+        gps_coordinates JSON
+    );
+
+CREATE TABLE
+    hotel_partners (
+        partner_id INT AUTO_INCREMENT PRIMARY KEY,
+        user_name VARCHAR(100) NOT NULL,
+        hotel_token VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(500) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        hotel_id INT NOT NULL,
         FOREIGN KEY (hotel_id) REFERENCES hotels (hotel_id) ON DELETE CASCADE ON UPDATE CASCADE
     );

@@ -34,6 +34,7 @@ def create_booking(db: Session, booking_info: BookingRequest, user_id: int):
 
     hotel = Hotel(
         name=booking_info.hotel_name,
+        token=booking_info.hotel_token,
         description=booking_info.hotel_description,
         street=booking_info.hotel_street,
         city=booking_info.hotel_city,

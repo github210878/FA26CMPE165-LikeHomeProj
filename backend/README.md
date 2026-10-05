@@ -30,8 +30,8 @@ DB_NAME=likehome_db
 DB_USER=(your mysql username)
 DB_PASSWORD=(your mysql password)
 
-EXTERNAL_API_URL=  hold on
-API_KEY= hold on
+EXTERNAL_API_URL=https://serpapi.com/search?engine=google_hotels
+API_KEY= (register your own api key)
 
 JWT_SECRET_KEY=your-very-long-random-secret-key
 JWT_ALGORITHM=HS256
