@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
-import type { BookingResponse, HotelRevalidationResponse } from "@/lib/api-types";
+import type { HotelRevalidationResponse } from "@/lib/api-types";
+import { bookingConfirmationHref } from "@/lib/booking-confirmation";
 import { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote } from "@/lib/checkout";
 import type { CheckoutSelection } from "@/lib/checkout-selection";
 
@@ -19,7 +20,6 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   const { status: sessionStatus, invalidateSession } = useAuth();
   const [phase, setPhase] = useState<Phase>("loading");
   const [quote, setQuote] = useState<HotelRevalidationResponse | null>(null);
-  const [booking, setBooking] = useState<BookingResponse | null>(null);
   const [notice, setNotice] = useState("");
   const [bookingError, setBookingError] = useState("");
   const initialRequest = useRef<{ key: string; promise: Promise<HotelRevalidationResponse> } | null>(null);
@@ -97,8 +97,8 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
         setPhase("conflict");
       });
       if (result.kind === "created") {
-        setBooking(result.booking);
         setPhase("success");
+        router.replace(bookingConfirmationHref(result.booking));
       } else {
         setQuote(result.quote);
         setNotice("The quote changed while you were confirming. Review this current quote and confirm again.");
@@ -153,13 +153,8 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
       <Link href="/search" className="ml-5 inline-block font-medium text-teal-700 underline">Return to search</Link>
     </div>;
   }
-  if (phase === "success" && booking) {
-    return <div role="status" className="mt-8 rounded-lg border border-teal-200 bg-teal-50 p-6 text-slate-950">
-      <h2 className="text-xl font-semibold">Booking created successfully.</h2>
-      <p className="mt-2">Reservation ID: {booking.reservation_id}</p>
-      <p className="mt-2 text-sm">No payment was collected in this flow.</p>
-      <Link href="/my-bookings" className="mt-4 inline-block font-medium text-teal-700 underline">View my bookings</Link>
-    </div>;
+  if (phase === "success") {
+    return <p role="status" className="mt-8 text-slate-700">Opening your booking confirmation…</p>;
   }
   if (!quote) return null;
 
