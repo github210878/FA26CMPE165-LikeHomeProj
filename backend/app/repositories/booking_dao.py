@@ -188,6 +188,8 @@ def get_booking_by_id(db: Session, booking_id: int, user_id: int):
 
     return {
         "reservation_id": reservation.reservation_id,
+        "guest_full_name": reservation.guest_full_name,
+        "guest_email": reservation.guest_email,
         "hotel_name": hotel.name,
         "room_type_name": room_type.type_name,
         "hotel_address": format_hotel_address(hotel),

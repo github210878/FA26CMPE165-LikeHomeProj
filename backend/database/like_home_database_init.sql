@@ -44,6 +44,8 @@ CREATE TABLE
         reservation_id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
         room_type_id INT NOT NULL,
+        guest_full_name VARCHAR(100) NULL,
+        guest_email VARCHAR(100) NULL,
         check_in_date DATE NOT NULL,
         check_out_date DATE NOT NULL,
         status ENUM ('confirmed', 'cancelled', 'completed') NOT NULL DEFAULT 'confirmed',

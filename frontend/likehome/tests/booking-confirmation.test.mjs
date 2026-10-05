@@ -33,8 +33,10 @@ const quote = {
   current_price_per_night: 165, likehome_payment_amount: 374.22,
 };
 const created = { user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 42, payment_id: 11 };
+const guest = { guest_full_name: "Person Example", guest_email: "person@example.com" };
 const persisted = {
   reservation_id: 42, hotel_name: "Example Hotel", room_type_name: "Queen room",
+  ...guest,
   hotel_address: "123 Main St, San Jose, CA", hotel_phone: null,
   hotel_description: null, room_description: "One queen bed",
   check_in_date: "2026-11-01", check_out_date: "2026-11-03",
@@ -51,13 +53,14 @@ test("successful creation supplies the route ID and a fresh detail read retrieve
     throw new Error("Unexpected request");
   };
 
-  const result = await submitAcceptedQuote(selection, quote, () => assert.fail("Unexpected conflict"));
+  const result = await submitAcceptedQuote(selection, quote, guest, () => assert.fail("Unexpected conflict"));
   assert.equal(result.kind, "created");
   const href = bookingConfirmationHref(result.booking);
   assert.equal(href, "/booking-confirmation/42");
   assert.equal(parseReservationId(href.split("/").at(-1)), 42);
   assert.ok(!href.includes("private-test-token"));
   assert.ok(!href.includes("payment_id"));
+  assert.ok(!href.includes(guest.guest_email));
 
   // Reopen using only the URL identifier and the authenticated session.
   assert.deepEqual(await getBookingDetails(parseReservationId("42")), persisted);
@@ -74,7 +77,7 @@ test("successful creation supplies the route ID and a fresh detail read retrieve
 test("failed creation and quote conflict cannot supply a confirmation route", async () => {
   session();
   globalThis.fetch = async () => new Response("failure", { status: 500 });
-  await assert.rejects(submitAcceptedQuote(selection, quote, () => {}), (error) => error instanceof ApiError && error.status === 500);
+  await assert.rejects(submitAcceptedQuote(selection, quote, guest, () => {}), (error) => error instanceof ApiError && error.status === 500);
 
   const newerQuote = {
     ...quote, ...selection, hotel_name: "Example Hotel", number_of_nights: 2,
@@ -89,7 +92,7 @@ test("failed creation and quote conflict cannot supply a confirmation route", as
     if (url.endsWith("/bookings/create")) return new Response("conflict", { status: 409 });
     return new Response(JSON.stringify(newerQuote));
   };
-  const result = await submitAcceptedQuote(selection, quote, () => {});
+  const result = await submitAcceptedQuote(selection, quote, guest, () => {});
   assert.equal(result.kind, "changed");
   assert.deepEqual(calls, ["/bookings/create", "/hotels/revalidate"]);
 });
@@ -128,4 +131,11 @@ test("null, 404, and 401 details remain distinct and do not trigger revalidation
     await assert.rejects(getBookingDetails(42), (error) => error instanceof ApiError && error.status === status && !error.message.includes("private detail"));
   }
   assert.deepEqual(calls, Array(3).fill("/bookings/get-booking-details/42"));
+});
+
+test("legacy booking detail can have null guest fields", async () => {
+  session();
+  const legacy = { ...persisted, guest_full_name: null, guest_email: null };
+  globalThis.fetch = async () => new Response(JSON.stringify(legacy));
+  assert.deepEqual(await getBookingDetails(42), legacy);
 });

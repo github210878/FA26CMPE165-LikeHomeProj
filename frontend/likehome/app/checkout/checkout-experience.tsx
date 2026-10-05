@@ -9,6 +9,7 @@ import type { HotelRevalidationResponse } from "@/lib/api-types";
 import { bookingConfirmationHref } from "@/lib/booking-confirmation";
 import { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote } from "@/lib/checkout";
 import type { CheckoutSelection } from "@/lib/checkout-selection";
+import { normalizedGuestInformation, validateGuestInformation, type GuestInformation, type GuestInformationErrors } from "@/lib/guest-information";
 
 type Phase = "loading" | "ready" | "unavailable" | "provider-error" | "error" |
   "submitting" | "conflict" | "booking-error" | "success";
@@ -22,6 +23,8 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   const [quote, setQuote] = useState<HotelRevalidationResponse | null>(null);
   const [notice, setNotice] = useState("");
   const [bookingError, setBookingError] = useState("");
+  const [guest, setGuest] = useState<GuestInformation>({ guest_full_name: "", guest_email: "" });
+  const [guestErrors, setGuestErrors] = useState<GuestInformationErrors>({});
   const initialRequest = useRef<{ key: string; promise: Promise<HotelRevalidationResponse> } | null>(null);
   const submissionGuard = useRef(createBookingSubmissionGuard());
   const refreshing = useRef(false);
@@ -85,12 +88,15 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   }
 
   async function confirmBooking() {
-    if (!selection || !quote || phase !== "ready" || !submissionGuard.current.tryStart()) return;
+    if (!selection || !quote || phase !== "ready") return;
+    const errors = validateGuestInformation(guest);
+    setGuestErrors(errors);
+    if (Object.keys(errors).length > 0 || !submissionGuard.current.tryStart()) return;
     setBookingError("");
     setPhase("submitting");
     let hadQuoteConflict = false;
     try {
-      const result = await submitAcceptedQuote(selection, quote, () => {
+      const result = await submitAcceptedQuote(selection, quote, normalizedGuestInformation(guest), () => {
         hadQuoteConflict = true;
         setQuote(null);
         setNotice("");
@@ -159,6 +165,25 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   if (!quote) return null;
 
   return <div className="mt-8 space-y-6">
+    <div className="grid gap-4 rounded-lg border border-slate-200 bg-white p-5 sm:grid-cols-2 sm:p-6">
+      <h2 className="text-xl font-semibold text-slate-950 sm:col-span-2">Primary guest details</h2>
+      <div>
+        <label htmlFor="guest-full-name" className="block text-sm font-medium text-slate-800">Full name</label>
+        <input id="guest-full-name" name="guest_full_name" type="text" autoComplete="name" required maxLength={100}
+          value={guest.guest_full_name} onChange={(event) => { setGuest((current) => ({ ...current, guest_full_name: event.target.value })); setGuestErrors((current) => ({ ...current, guest_full_name: undefined })); }}
+          aria-invalid={Boolean(guestErrors.guest_full_name)} aria-describedby={guestErrors.guest_full_name ? "guest-full-name-error" : undefined}
+          className="mt-2 min-h-11 w-full rounded-md border border-slate-300 px-3 text-slate-950" />
+        {guestErrors.guest_full_name && <p id="guest-full-name-error" className="mt-1 text-sm text-red-700">{guestErrors.guest_full_name}</p>}
+      </div>
+      <div>
+        <label htmlFor="guest-email" className="block text-sm font-medium text-slate-800">Email address</label>
+        <input id="guest-email" name="guest_email" type="email" autoComplete="email" required maxLength={100}
+          value={guest.guest_email} onChange={(event) => { setGuest((current) => ({ ...current, guest_email: event.target.value })); setGuestErrors((current) => ({ ...current, guest_email: undefined })); }}
+          aria-invalid={Boolean(guestErrors.guest_email)} aria-describedby={guestErrors.guest_email ? "guest-email-error" : undefined}
+          className="mt-2 min-h-11 w-full rounded-md border border-slate-300 px-3 text-slate-950" />
+        {guestErrors.guest_email && <p id="guest-email-error" className="mt-1 text-sm text-red-700">{guestErrors.guest_email}</p>}
+      </div>
+    </div>
     {quote.price_changed === true && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
       The current price has changed since your search. Review the updated quote below.
     </p>}

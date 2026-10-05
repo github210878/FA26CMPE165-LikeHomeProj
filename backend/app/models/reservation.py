@@ -1,4 +1,3 @@
-from tokenize import String
 from sqlalchemy import Float, String, Integer, Date, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column
 from app.config.database import Base
@@ -15,6 +14,11 @@ class Reservation(Base):
     user_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
     room_type_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Nullable so reservations created before migration 003 remain readable.
+    guest_full_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    guest_email: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     check_in_date: Mapped[date] = mapped_column(Date, nullable=False)
 

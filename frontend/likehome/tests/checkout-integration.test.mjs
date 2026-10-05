@@ -6,6 +6,7 @@ import { createBooking } from "../lib/bookings.ts";
 import { bookingRequestFromQuote, createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote } from "../lib/checkout.ts";
 import { checkoutHref, parseCheckoutSelection, safeCheckoutReturnTo } from "../lib/checkout-selection.ts";
 import { saveAccessToken } from "../lib/token-storage.ts";
+import { normalizedGuestInformation, validateGuestInformation } from "../lib/guest-information.ts";
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
@@ -40,6 +41,7 @@ const quote = {
   price_changed: true,
 };
 const bookingResponse = { user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 10, payment_id: 11 };
+const guest = { guest_full_name: "Person Example", guest_email: "person@example.com" };
 const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 test("selection link preserves only non-secret stay context and rejects incomplete navigation", () => {
@@ -92,9 +94,10 @@ test("quote API preserves unavailable and provider error statuses safely", async
 test("booking sends only selected stay and accepted server quote using Bearer auth", async () => {
   storage();
   saveAccessToken("test-user-token");
-  const request = bookingRequestFromQuote(selection, quote);
+  const request = bookingRequestFromQuote(selection, quote, guest);
   assert.deepEqual(request, {
     hotel_token: "property-123", q: "San Jose hotels",
+    guest_full_name: "Person Example", guest_email: "person@example.com",
     check_in_date: "2026-11-01", check_out_date: "2026-11-03",
     adults: 3, children: 0, currency: "USD", gl: "us", hl: "en",
     price_per_night: 165, accepted_payment_amount: 374.22,
@@ -119,10 +122,10 @@ test("missing or rejected user session cannot create a booking", async () => {
   storage();
   let calls = 0;
   globalThis.fetch = async () => { calls++; return new Response("unauthorized", { status: 401 }); };
-  await assert.rejects(createBooking(bookingRequestFromQuote(selection, quote)), (error) => error instanceof ApiError && error.status === 401);
+  await assert.rejects(createBooking(bookingRequestFromQuote(selection, quote, guest)), (error) => error instanceof ApiError && error.status === 401);
   assert.equal(calls, 0);
   saveAccessToken("expired-token");
-  await assert.rejects(createBooking(bookingRequestFromQuote(selection, quote)), (error) => error instanceof ApiError && error.status === 401);
+  await assert.rejects(createBooking(bookingRequestFromQuote(selection, quote, guest)), (error) => error instanceof ApiError && error.status === 401);
   assert.equal(calls, 1);
 });
 
@@ -138,7 +141,7 @@ test("booking quote conflict fetches a new quote and never submits a second book
     throw new Error("Unexpected request");
   };
   let conflictNotices = 0;
-  const result = await submitAcceptedQuote(selection, quote, () => { conflictNotices++; });
+  const result = await submitAcceptedQuote(selection, quote, guest, () => { conflictNotices++; });
   assert.deepEqual(result, { kind: "changed", quote: newerQuote });
   assert.equal(conflictNotices, 1);
   assert.deepEqual(calls.map((call) => new URL(call.url).pathname), ["/bookings/create", "/hotels/revalidate"]);
@@ -154,7 +157,7 @@ test("successful confirmation creates one booking without another frontend quote
     calls.push(new URL(url).pathname);
     return new Response(JSON.stringify(bookingResponse));
   };
-  const result = await submitAcceptedQuote(selection, quote, () => { throw new Error("Unexpected conflict"); });
+  const result = await submitAcceptedQuote(selection, quote, guest, () => { throw new Error("Unexpected conflict"); });
   assert.deepEqual(result, { kind: "created", booking: bookingResponse });
   assert.deepEqual(calls, ["/bookings/create"]);
 });
@@ -165,4 +168,11 @@ test("submission guard prevents duplicate pending confirmation", () => {
   assert.equal(guard.tryStart(), false);
   guard.finish();
   assert.equal(guard.tryStart(), true);
+});
+
+test("guest input is validated and trimmed without requesting another quote", () => {
+  assert.ok(validateGuestInformation({ guest_full_name: "  ", guest_email: "bad" }).guest_full_name);
+  assert.ok(validateGuestInformation({ guest_full_name: "  ", guest_email: "bad" }).guest_email);
+  assert.deepEqual(validateGuestInformation(guest), {});
+  assert.deepEqual(normalizedGuestInformation({ guest_full_name: " Person Example ", guest_email: " person@example.com " }), guest);
 });

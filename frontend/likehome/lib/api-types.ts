@@ -51,6 +51,8 @@ export type HotelRevalidationResponse = {
 
 export type BookingRequest = {
   hotel_token: string;
+  guest_full_name: string;
+  guest_email: string;
   q: string;
   check_in_date: string;
   check_out_date: string;
@@ -126,7 +128,12 @@ export type BookingListItem = {
 
 export type BookingListResponse = BookingListItem[];
 
-export type BookingDetailResponse = BookingListItem | null;
+export type BookingDetailItem = BookingListItem & {
+  guest_full_name: string | null;
+  guest_email: string | null;
+};
+
+export type BookingDetailResponse = BookingDetailItem | null;
 
 export type CancellationResponse = {
   reservation_id: number;

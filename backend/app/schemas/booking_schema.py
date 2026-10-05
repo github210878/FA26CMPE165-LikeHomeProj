@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from datetime import date
 from typing import Literal
 
@@ -8,6 +8,8 @@ class BookingRequest(BaseModel):
 
     hotel_name: str | None = Field(default=None, min_length=1, max_length=255)
     hotel_token: str = Field(min_length=1, max_length=255)
+    guest_full_name: str = Field(min_length=1, max_length=100)
+    guest_email: EmailStr = Field(max_length=100)
     q: str = Field(min_length=1, max_length=255)
     adults: int = Field(default=2, ge=1, le=20)
     children: int = Field(default=0, ge=0, le=20)
@@ -41,6 +43,11 @@ class BookingRequest(BaseModel):
         if not value:
             raise ValueError("A destination is required")
         return value
+
+    @field_validator("guest_full_name", "guest_email", mode="before")
+    @classmethod
+    def trim_guest_contact(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("hotel_token")
     @classmethod

@@ -168,6 +168,15 @@ header contract are unchanged.
 hotel property token, hotel/room descriptions, stay dates, and a nightly price;
 the authenticated user ID is supplied by the server. Check-out must follow
 check-in. The server calculates nights and rounds monetary amounts to cents.
+New bookings also require one primary guest's full name and contact email.
+These fields describe the stay contact and do not change the authenticated
+reservation owner or the trusted rate. The owner-only booking-detail endpoint
+returns both fields; the My Bookings list does not include them.
+Existing databases need `database/migrations/003_add_reservation_guest_information.sql`
+after the applicable `001` and `002` migrations. New guest columns remain NULL
+for historical reservations; no account name or email is inferred for them.
+Fresh databases created from `database/like_home_database_init.sql` already
+have the columns. Do not run migration 003 on a fresh database.
 The reservation total is nightly price times nights times the existing 1.05
 service-fee multiplier. The recorded booking Payment amount applies the existing
 1.08 tax multiplier to that total. Its initial status is `pending`; creating

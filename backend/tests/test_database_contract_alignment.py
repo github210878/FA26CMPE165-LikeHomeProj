@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.cache_hotel import CacheHotel
 from app.models.hotel import Hotel
 from app.models.partner_model import HotelPartner
+from app.models.reservation import Reservation
 from app.repositories import booking_dao, hotel_dao, partner_dao
 from app.routers import hotel_router
 from app.schemas.booking_schema import BookingRequest
@@ -61,6 +62,8 @@ def test_hotel_lookup_uses_token_and_unique_constraint(sqlite_session):
 def test_booking_requires_external_token_and_uses_hotel_model_field(monkeypatch):
     base = dict(
         hotel_name="Hotel A",
+        guest_full_name="Person Example",
+        guest_email="person@example.com",
         q="San Jose hotels",
         check_in_date=date(2026, 10, 5),
         check_out_date=date(2026, 10, 8),
@@ -218,6 +221,17 @@ def test_sql_contract_matches_cache_and_partner_models():
     assert Hotel.__table__.c.hotel_token.unique
     assert HotelPartner.__table__.c.created_at.nullable
     assert HotelPartner.__table__.c.hotel_id.foreign_keys
+
+
+def test_guest_columns_match_fresh_sql_and_nullable_migration():
+    root = Path(__file__).parents[1] / "database"
+    sql = (root / "like_home_database_init.sql").read_text()
+    migration = (root / "migrations/003_add_reservation_guest_information.sql").read_text()
+    for column in ("guest_full_name", "guest_email"):
+        assert f"{column} VARCHAR(100) NULL" in sql
+        assert f"ADD COLUMN {column} VARCHAR(100) NULL" in migration
+    assert Reservation.__table__.c.guest_full_name.nullable
+    assert Reservation.__table__.c.guest_email.nullable
 
 
 def test_partner_token_must_not_authenticate_as_same_id_user(monkeypatch):

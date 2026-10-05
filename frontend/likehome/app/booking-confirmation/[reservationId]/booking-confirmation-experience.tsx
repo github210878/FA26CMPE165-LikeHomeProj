@@ -5,13 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
-import type { BookingListItem } from "@/lib/api-types";
+import type { BookingDetailItem } from "@/lib/api-types";
 import { parseReservationId } from "@/lib/booking-confirmation";
 import { getBookingDetails } from "@/lib/bookings";
 
 type DetailState =
   | { kind: "loading"; key: string }
-  | { kind: "success"; key: string; booking: BookingListItem }
+  | { kind: "success"; key: string; booking: BookingDetailItem }
   | { kind: "not-found"; key: string }
   | { kind: "error"; key: string };
 
@@ -84,6 +84,8 @@ export default function BookingConfirmationExperience({ reservationId }: { reser
         <div><dt className="font-medium text-slate-950">Status</dt><dd className="capitalize">{current.booking.status}</dd></div>
         <div><dt className="font-medium text-slate-950">Hotel</dt><dd>{current.booking.hotel_name}</dd></div>
         <div><dt className="font-medium text-slate-950">Room type</dt><dd>{current.booking.room_type_name}</dd></div>
+        {current.booking.guest_full_name && <div><dt className="font-medium text-slate-950">Primary guest</dt><dd>{current.booking.guest_full_name}</dd></div>}
+        {current.booking.guest_email && <div><dt className="font-medium text-slate-950">Contact email</dt><dd>{current.booking.guest_email}</dd></div>}
         <div><dt className="font-medium text-slate-950">Check-in</dt><dd><time dateTime={current.booking.check_in_date}>{current.booking.check_in_date.slice(0, 10)}</time></dd></div>
         <div><dt className="font-medium text-slate-950">Check-out</dt><dd><time dateTime={current.booking.check_out_date}>{current.booking.check_out_date.slice(0, 10)}</time></dd></div>
         <div><dt className="font-medium text-slate-950">Total price</dt><dd>{dollars.format(current.booking.total_price)}</dd></div>

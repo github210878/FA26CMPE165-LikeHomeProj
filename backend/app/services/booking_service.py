@@ -88,6 +88,8 @@ def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> B
             Reservation(
                 user_id=user_id,
                 room_type_id=room_type_id,
+                guest_full_name=booking_info.guest_full_name,
+                guest_email=booking_info.guest_email,
                 check_in_date=booking_info.check_in_date,
                 check_out_date=booking_info.check_out_date,
                 total_price=float(total_price),

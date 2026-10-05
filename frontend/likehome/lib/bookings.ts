@@ -1,5 +1,5 @@
 import { ApiError, getAuthorizedJson, postAuthorizedJson } from "./api.ts";
-import type { BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationResponse } from "./api-types.ts";
+import type { BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationResponse } from "./api-types.ts";
 import { getAccessToken } from "./token-storage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -43,6 +43,14 @@ function isBookingListItem(value: unknown): value is BookingListItem {
     (value.status === "confirmed" || value.status === "cancelled" || value.status === "completed");
 }
 
+function isBookingDetailItem(value: unknown): value is BookingDetailItem {
+  if (!isRecord(value)) return false;
+  const fields = value;
+  return isBookingListItem(value) &&
+    isNullableString(fields.guest_full_name) &&
+    isNullableString(fields.guest_email);
+}
+
 export async function getMyBookings(): Promise<BookingListResponse> {
   const token = getAccessToken();
   if (!token) throw new ApiError(401);
@@ -66,7 +74,7 @@ export async function getBookingDetails(reservationId: number): Promise<BookingD
     token,
   );
   if (response === null) return null;
-  if (!isBookingListItem(response)) {
+  if (!isBookingDetailItem(response)) {
     throw new Error("Booking details returned an unexpected response");
   }
   return response;

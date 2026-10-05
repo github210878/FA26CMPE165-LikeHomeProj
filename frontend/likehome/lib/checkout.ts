@@ -3,6 +3,7 @@ import type {
   BookingRequest, BookingResponse, HotelRevalidationRequest, HotelRevalidationResponse,
 } from "./api-types.ts";
 import { createBooking } from "./bookings.ts";
+import type { GuestInformation } from "./guest-information.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -37,9 +38,12 @@ export async function revalidateHotel(selection: HotelRevalidationRequest): Prom
 export function bookingRequestFromQuote(
   selection: HotelRevalidationRequest,
   quote: HotelRevalidationResponse,
+  guest: GuestInformation,
 ): BookingRequest {
   return {
     hotel_token: selection.property_token,
+    guest_full_name: guest.guest_full_name,
+    guest_email: guest.guest_email,
     q: selection.q,
     check_in_date: selection.check_in_date,
     check_out_date: selection.check_out_date,
@@ -56,10 +60,11 @@ export function bookingRequestFromQuote(
 export async function submitAcceptedQuote(
   selection: HotelRevalidationRequest,
   quote: HotelRevalidationResponse,
+  guest: GuestInformation,
   onConflict: () => void,
 ): Promise<{ kind: "created"; booking: BookingResponse } | { kind: "changed"; quote: HotelRevalidationResponse }> {
   try {
-    return { kind: "created", booking: await createBooking(bookingRequestFromQuote(selection, quote)) };
+    return { kind: "created", booking: await createBooking(bookingRequestFromQuote(selection, quote, guest)) };
   } catch (error: unknown) {
     if (!(error instanceof ApiError) || error.status !== 409) throw error;
     onConflict();

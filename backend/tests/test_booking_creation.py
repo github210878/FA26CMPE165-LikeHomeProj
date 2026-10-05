@@ -19,6 +19,7 @@ from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.routers.booking_router import router as booking_router
+from app.repositories import booking_dao
 from app.schemas.booking_schema import BookingRequest, BookingResponse
 from app.schemas.hotel_schema import HotelRevalidationResponse
 from app.services import booking_service
@@ -39,6 +40,8 @@ def request(*, check_in=date(2026, 11, 1), check_out=date(2026, 11, 2), **overri
     fields = dict(
         hotel_name="Hotel A",
         hotel_token="property-A",
+        guest_full_name="  Person Example  ",
+        guest_email="  person@example.com  ",
         q="San Jose hotels",
         room_type_name="Queen",
         room_type_description="One queen bed",
@@ -105,6 +108,8 @@ def test_stay_pricing_and_single_commit(engine, monkeypatch, check_out, nights, 
         assert hotel.hotel_token == "property-A"
         assert room.type_name == "Lowest available rate"
         assert reservation.user_id == 7
+        assert reservation.guest_full_name == "Person Example"
+        assert reservation.guest_email == "person@example.com"
         assert (reservation.check_out_date - reservation.check_in_date).days == nights
         assert reservation.total_price == pytest.approx(total)
         assert payment.amount == pytest.approx(payment_amount)
@@ -122,6 +127,49 @@ def test_stay_pricing_and_single_commit(engine, monkeypatch, check_out, nights, 
 def test_invalid_date_range_is_a_validation_error(check_in, check_out):
     with pytest.raises(ValidationError):
         request(check_in=check_in, check_out=check_out)
+
+
+def test_guest_contact_schema_validation():
+    fields = request().model_dump()
+    for missing in ("guest_full_name", "guest_email"):
+        incomplete = {key: value for key, value in fields.items() if key != missing}
+        with pytest.raises(ValidationError):
+            BookingRequest(**incomplete)
+    for invalid_name in (" ", "x" * 101):
+        with pytest.raises(ValidationError):
+            request(guest_full_name=invalid_name)
+    for invalid_email in ("not-an-email", "a" * 95 + "@example.com"):
+        with pytest.raises(ValidationError):
+            request(guest_email=invalid_email)
+    assert request().guest_full_name == "Person Example"
+    assert request().guest_email == "person@example.com"
+
+
+def test_guest_detail_is_owned_and_legacy_nulls_are_safe(engine):
+    with Session(engine) as db:
+        created = booking_service.create_booking(db, request(), 7)
+        detail = booking_dao.get_booking_by_id(db, created.reservation_id, 7)
+        assert detail["guest_full_name"] == "Person Example"
+        assert detail["guest_email"] == "person@example.com"
+        assert booking_dao.get_booking_by_id(db, created.reservation_id, 8) is None
+        reservation = db.get(Reservation, created.reservation_id)
+        reservation.guest_full_name = None
+        reservation.guest_email = None
+        db.commit()
+        legacy = booking_dao.get_booking_by_id(db, created.reservation_id, 7)
+        assert legacy["guest_full_name"] is None
+        assert legacy["guest_email"] is None
+        assert "guest_email" not in booking_dao.get_all_booking_by_user_id(db, 7)[0]
+
+
+def test_guest_contact_does_not_change_trusted_price(engine):
+    with Session(engine) as db:
+        first = booking_service.create_booking(db, request(), 7)
+        second = booking_service.create_booking(
+            db, request(guest_full_name="Other Guest", guest_email="other@example.com"), 8
+        )
+        assert db.get(Reservation, first.reservation_id).total_price == db.get(Reservation, second.reservation_id).total_price
+        assert db.get(Payment, first.payment_id).amount == db.get(Payment, second.payment_id).amount
 
 
 def test_money_is_rounded_to_cents(engine, monkeypatch):
@@ -278,6 +326,18 @@ def test_create_http_contract_uses_authenticated_user_and_rejects_partner(engine
         "/bookings/create", json={**body, "user_id": 99},
         headers={"Authorization": f"Bearer {user_token}"},
     ).status_code == 422
+    for invalid_body in (
+        {key: value for key, value in body.items() if key != "guest_full_name"},
+        {key: value for key, value in body.items() if key != "guest_email"},
+        {**body, "guest_full_name": "   "},
+        {**body, "guest_email": "invalid"},
+    ):
+        assert client.post(
+            "/bookings/create", json=invalid_body,
+            headers={"Authorization": f"Bearer {user_token}"},
+        ).status_code == 422
+    with Session(engine) as db:
+        assert db.query(Reservation).count() == 0
     response = client.post(
         "/bookings/create", json=body,
         headers={"Authorization": f"Bearer {user_token}"},
@@ -289,3 +349,17 @@ def test_create_http_contract_uses_authenticated_user_and_rejects_partner(engine
     assert response.json()["user_id"] == 7
     with Session(engine) as db:
         assert db.get(Reservation, response.json()["reservation_id"]).user_id == 7
+    detail = client.get(
+        f"/bookings/get-booking-details/{response.json()['reservation_id']}",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert detail.status_code == 200
+    assert detail.json()["guest_full_name"] == "Person Example"
+    assert detail.json()["guest_email"] == "person@example.com"
+    other_token = auth.create_access_token(8, subject_type="user")
+    non_owner = client.get(
+        f"/bookings/get-booking-details/{response.json()['reservation_id']}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert non_owner.status_code == 200
+    assert non_owner.json() is None

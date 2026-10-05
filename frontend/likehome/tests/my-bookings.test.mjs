@@ -37,6 +37,7 @@ const booking = {
   total_price: 150.5,
   status: "confirmed",
 };
+const detail = { ...booking, guest_full_name: "Person Example", guest_email: "person@example.com" };
 
 test("booking list uses the exact current-user endpoint and Bearer header", async () => {
   mockSessionStorage();
@@ -111,10 +112,10 @@ test("booking details use the owned reservation ID with Bearer auth", async () =
   let request;
   globalThis.fetch = async (url, init) => {
     request = { url, init };
-    return new Response(JSON.stringify(booking));
+    return new Response(JSON.stringify(detail));
   };
 
-  assert.deepEqual(await getBookingDetails(12), booking);
+  assert.deepEqual(await getBookingDetails(12), detail);
   const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
   assert.equal(request.url, `${baseUrl}/bookings/get-booking-details/12`);
   assert.equal(request.init.headers.Authorization, "Bearer issued-token");
@@ -149,7 +150,7 @@ test("booking detail rejects missing auth and unauthorized responses", async () 
 test("booking detail rejects malformed records and invalid reservation IDs", async () => {
   mockSessionStorage();
   saveAccessToken("issued-token");
-  globalThis.fetch = async () => new Response(JSON.stringify({ ...booking, total_price: "150.50" }));
+  globalThis.fetch = async () => new Response(JSON.stringify({ ...detail, total_price: "150.50" }));
   await assert.rejects(getBookingDetails(12), /unexpected response/);
   await assert.rejects(getBookingDetails(0), /Invalid reservation ID/);
   await assert.rejects(getBookingDetails(1.5), /Invalid reservation ID/);
