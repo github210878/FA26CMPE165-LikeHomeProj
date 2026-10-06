@@ -199,6 +199,16 @@ provider quote before the database critical section. Cached search prices are
 display-only. Creating the local Payment record is not external payment
 processing or supplier reservation fulfillment.
 
+The authenticated `POST /bookings/pay/{payment_id}` route performs the separate
+LikeHome demo payment step. It locks the owned reservation and existing booking
+Payment, then changes `pending` to `paid` using the persisted amount. A repeated
+request returns the already-paid result. It does not contact a payment provider
+or SerpApi. `GET /bookings/get-payment-details/{payment_id}` and
+`GET /bookings/get-all-payments` return owned payment ID, reservation ID,
+amount, type, and status so a pending payment can be resumed after refresh.
+The reservation's `confirmed` status means a local reservation exists; the
+separate payment status determines whether the LikeHome payment step completed.
+
 ### User sign up:
 
 - API: `/user/register`

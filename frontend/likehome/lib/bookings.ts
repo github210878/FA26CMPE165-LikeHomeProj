@@ -1,5 +1,5 @@
 import { ApiError, getAuthorizedJson, postAuthorizedJson } from "./api.ts";
-import type { BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationResponse } from "./api-types.ts";
+import type { BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationResponse, PaymentResponse } from "./api-types.ts";
 import { getAccessToken } from "./token-storage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -17,6 +17,49 @@ function isBookingResponse(value: unknown): value is BookingResponse {
     Number.isInteger(value.room_type_id) && (value.room_type_id as number) > 0 &&
     Number.isInteger(value.reservation_id) && (value.reservation_id as number) > 0 &&
     Number.isInteger(value.payment_id) && (value.payment_id as number) > 0;
+}
+
+function isPaymentResponse(value: unknown): value is PaymentResponse {
+  return isRecord(value) &&
+    Number.isInteger(value.payment_id) && (value.payment_id as number) > 0 &&
+    Number.isInteger(value.reservation_id) && (value.reservation_id as number) > 0 &&
+    typeof value.amount === "number" && Number.isFinite(value.amount) && value.amount >= 0 &&
+    (value.payment_type === "booking" || value.payment_type === "cancellation") &&
+    ["pending", "paid", "failed", "refunded"].includes(value.payment_status as string);
+}
+
+export async function getPaymentDetails(paymentId: number): Promise<PaymentResponse | null> {
+  if (!Number.isSafeInteger(paymentId) || paymentId <= 0) throw new Error("Invalid payment ID");
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+  const response = await getAuthorizedJson<unknown>(`/bookings/get-payment-details/${paymentId}`, token);
+  if (response === null) return null;
+  if (!isPaymentResponse(response) || response.payment_id !== paymentId) {
+    throw new Error("Payment details returned an unexpected response");
+  }
+  return response;
+}
+
+export async function getMyPayments(): Promise<PaymentResponse[]> {
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+  const response = await getAuthorizedJson<unknown>("/bookings/get-all-payments", token);
+  if (!Array.isArray(response) || !response.every(isPaymentResponse)) {
+    throw new Error("Payments returned an unexpected response");
+  }
+  return response;
+}
+
+export async function payBookingPayment(paymentId: number): Promise<PaymentResponse> {
+  if (!Number.isSafeInteger(paymentId) || paymentId <= 0) throw new Error("Invalid payment ID");
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+  const response = await postAuthorizedJson<unknown>(`/bookings/pay/${paymentId}`, token);
+  if (!isPaymentResponse(response) || response.payment_id !== paymentId ||
+      response.payment_type !== "booking" || response.payment_status !== "paid") {
+    throw new Error("Payment returned an unexpected response");
+  }
+  return response;
 }
 
 export async function createBooking(request: BookingRequest): Promise<BookingResponse> {
@@ -85,7 +128,7 @@ function isCancellationResponse(value: unknown): value is CancellationResponse {
     Number.isInteger(value.reservation_id) && (value.reservation_id as number) > 0 &&
     value.status === "cancelled" &&
     Number.isInteger(value.booking_payment_id) && (value.booking_payment_id as number) > 0 &&
-    value.booking_payment_status === "refunded" &&
+    (value.booking_payment_status === "pending" || value.booking_payment_status === "refunded") &&
     Number.isInteger(value.cancellation_payment_id) && (value.cancellation_payment_id as number) > 0 &&
     typeof value.cancellation_amount === "number" && Number.isFinite(value.cancellation_amount) && value.cancellation_amount >= 0 &&
     value.cancellation_payment_status === "pending";

@@ -3,7 +3,8 @@ import { afterEach, test } from "node:test";
 
 import { ApiError } from "../lib/api.ts";
 import { bookingConfirmationHref, parseReservationId } from "../lib/booking-confirmation.ts";
-import { getBookingDetails } from "../lib/bookings.ts";
+import { getBookingDetails, getMyPayments, getPaymentDetails, payBookingPayment } from "../lib/bookings.ts";
+import { bookingPaymentForReservation, paymentHref } from "../lib/payment.ts";
 import { submitAcceptedQuote } from "../lib/checkout.ts";
 import { saveAccessToken } from "../lib/token-storage.ts";
 
@@ -43,18 +44,27 @@ const persisted = {
   price_per_night: 165, total_price: 346.5, status: "confirmed",
 };
 
-test("successful creation supplies the route ID and a fresh detail read retrieves persisted values", async () => {
+test("creation opens payment review; only paid persisted state supports confirmation", async () => {
   session();
   const requests = [];
+  const pendingPayment = { payment_id: 11, reservation_id: 42, amount: 374.22,
+    payment_type: "booking", payment_status: "pending" };
+  const paidPayment = { ...pendingPayment, payment_status: "paid" };
   globalThis.fetch = async (url, init) => {
     requests.push({ url, init });
     if (url.endsWith("/bookings/create")) return new Response(JSON.stringify(created));
+    if (url.endsWith("/bookings/get-payment-details/11")) return new Response(JSON.stringify(pendingPayment));
+    if (url.endsWith("/bookings/pay/11")) return new Response(JSON.stringify(paidPayment));
     if (url.endsWith("/bookings/get-booking-details/42")) return new Response(JSON.stringify(persisted));
+    if (url.endsWith("/bookings/get-all-payments")) return new Response(JSON.stringify([paidPayment]));
     throw new Error("Unexpected request");
   };
 
   const result = await submitAcceptedQuote(selection, quote, guest, () => assert.fail("Unexpected conflict"));
   assert.equal(result.kind, "created");
+  assert.equal(paymentHref(result.booking.payment_id), "/payment/11");
+  assert.deepEqual(await getPaymentDetails(result.booking.payment_id), pendingPayment);
+  assert.deepEqual(await payBookingPayment(result.booking.payment_id), paidPayment);
   const href = bookingConfirmationHref(result.booking);
   assert.equal(href, "/booking-confirmation/42");
   assert.equal(parseReservationId(href.split("/").at(-1)), 42);
@@ -64,14 +74,16 @@ test("successful creation supplies the route ID and a fresh detail read retrieve
 
   // Reopen using only the URL identifier and the authenticated session.
   assert.deepEqual(await getBookingDetails(parseReservationId("42")), persisted);
+  assert.deepEqual(bookingPaymentForReservation(await getMyPayments(), 42), paidPayment);
   assert.deepEqual(requests.map(({ url }) => new URL(url).pathname), [
-    "/bookings/create", "/bookings/get-booking-details/42",
+    "/bookings/create", "/bookings/get-payment-details/11", "/bookings/pay/11",
+    "/bookings/get-booking-details/42", "/bookings/get-all-payments",
   ]);
-  assert.equal(requests[1].init.headers.Authorization, "Bearer private-test-token");
-  assert.equal(requests[1].init.cache, "no-store");
-  assert.equal(requests[1].init.body, undefined);
-  assert.ok(!requests[1].url.includes("user_id"));
-  assert.ok(!requests[1].url.includes("private-test-token"));
+  assert.equal(requests[3].init.headers.Authorization, "Bearer private-test-token");
+  assert.equal(requests[3].init.cache, "no-store");
+  assert.equal(requests[3].init.body, undefined);
+  assert.ok(!requests[3].url.includes("user_id"));
+  assert.ok(!requests[3].url.includes("private-test-token"));
 });
 
 test("failed creation and quote conflict cannot supply a confirmation route", async () => {

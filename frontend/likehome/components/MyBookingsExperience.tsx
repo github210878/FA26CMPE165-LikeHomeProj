@@ -5,14 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
-import type { BookingListItem, BookingListResponse } from "@/lib/api-types";
+import type { BookingListItem, BookingListResponse, PaymentResponse } from "@/lib/api-types";
 import { canCancelBooking, cancellationErrorMessage, createCancellationSubmissionGuard, keepBooking, requestCancellation, startCancellation, type CancellationPhase } from "@/lib/booking-cancellation";
-import { cancelBookingAndRefresh, getBookingDetails, getMyBookings } from "@/lib/bookings";
+import { cancelBookingAndRefresh, getBookingDetails, getMyBookings, getMyPayments } from "@/lib/bookings";
+import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
 
 type LoadState =
   | { kind: "loading" }
   | { kind: "empty" }
-  | { kind: "success"; bookings: BookingListResponse }
+  | { kind: "success"; bookings: BookingListResponse; payments: PaymentResponse[] }
   | { kind: "error" };
 
 type DetailState =
@@ -97,9 +98,9 @@ export default function MyBookingsExperience() {
     if (status !== "authenticated") return;
 
     let active = true;
-    getMyBookings().then((bookings) => {
+    Promise.all([getMyBookings(), getMyPayments()]).then(([bookings, payments]) => {
       if (!active) return;
-      setLoad(bookings.length === 0 ? { kind: "empty" } : { kind: "success", bookings });
+      setLoad(bookings.length === 0 ? { kind: "empty" } : { kind: "success", bookings, payments });
     }).catch((error: unknown) => {
       if (!active) return;
       if (error instanceof ApiError && error.status === 401) {
@@ -115,8 +116,8 @@ export default function MyBookingsExperience() {
   async function refreshBookingsAfterCancellation() {
     setLoad({ kind: "loading" });
     try {
-      const bookings = await getMyBookings();
-      setLoad(bookings.length === 0 ? { kind: "empty" } : { kind: "success", bookings });
+      const [bookings, payments] = await Promise.all([getMyBookings(), getMyPayments()]);
+      setLoad(bookings.length === 0 ? { kind: "empty" } : { kind: "success", bookings, payments });
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 401) {
         invalidateSession();
@@ -137,11 +138,12 @@ export default function MyBookingsExperience() {
     try {
       const result = await cancelBookingAndRefresh(reservationId, () => {
         setExpandedReservationId(null);
-        setCancellationNotice({ kind: "success", message: "Booking cancelled successfully." });
+        setCancellationNotice({ kind: "success", message: "Cancellation recorded. The LikeHome cancellation charge is pending; no external payment was collected." });
         setLoad({ kind: "loading" });
       });
       if (result.kind === "refreshed") {
-        setLoad(result.bookings.length === 0 ? { kind: "empty" } : { kind: "success", bookings: result.bookings });
+        const payments = await getMyPayments();
+        setLoad(result.bookings.length === 0 ? { kind: "empty" } : { kind: "success", bookings: result.bookings, payments });
       } else if (result.error instanceof ApiError && result.error.status === 401) {
         invalidateSession();
         router.replace("/login");
@@ -228,6 +230,16 @@ export default function MyBookingsExperience() {
             <div><dt className="font-medium text-slate-900">Total price</dt><dd>{booking.total_price.toFixed(2)}</dd></div>
             <div><dt className="font-medium text-slate-900">Reservation ID</dt><dd>{booking.reservation_id}</dd></div>
           </dl>
+          {(() => {
+            const payment = bookingPaymentForReservation(load.payments, booking.reservation_id);
+            const cancellation = load.payments.find((entry) => entry.reservation_id === booking.reservation_id && entry.payment_type === "cancellation");
+            return (payment || cancellation) && <div className="mt-4 text-sm text-slate-700">
+              {payment && <p>LikeHome booking payment: <span className="capitalize">{payment.payment_status}</span> ({payment.amount.toFixed(2)} USD)</p>}
+              {cancellation && <p>LikeHome cancellation charge: <span className="capitalize">{cancellation.payment_status}</span> ({cancellation.amount.toFixed(2)} USD). No external charge was made.</p>}
+              {payment && booking.status === "confirmed" && payment.payment_status === "pending" &&
+                <Link href={paymentHref(payment.payment_id)} className="mt-2 inline-block min-h-11 font-medium text-teal-700 underline">Complete payment</Link>}
+            </div>;
+          })()}
           <button type="button" aria-expanded={expandedReservationId === booking.reservation_id}
             onClick={() => setExpandedReservationId((current) => current === booking.reservation_id ? null : booking.reservation_id)}
             className="mt-4 min-h-11 font-medium text-teal-700 underline">

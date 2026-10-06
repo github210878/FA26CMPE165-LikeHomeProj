@@ -35,6 +35,14 @@ const response = {
   cancellation_payment_status: "pending",
 };
 
+test("cancelling an unpaid booking preserves pending payment wording", async () => {
+  mockSessionStorage();
+  saveAccessToken("issued-token");
+  const unpaidCancellation = { ...response, booking_payment_status: "pending" };
+  globalThis.fetch = async () => new Response(JSON.stringify(unpaidCancellation));
+  assert.deepEqual(await cancelBooking(12), unpaidCancellation);
+});
+
 const cancelledBooking = {
   reservation_id: 12,
   hotel_name: "Example Hotel",

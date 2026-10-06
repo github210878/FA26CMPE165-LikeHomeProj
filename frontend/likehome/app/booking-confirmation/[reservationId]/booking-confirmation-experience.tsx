@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
-import type { BookingDetailItem } from "@/lib/api-types";
+import type { BookingDetailItem, PaymentResponse } from "@/lib/api-types";
 import { parseReservationId } from "@/lib/booking-confirmation";
-import { getBookingDetails } from "@/lib/bookings";
+import { getBookingDetails, getMyPayments } from "@/lib/bookings";
+import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
 
 type DetailState =
   | { kind: "loading"; key: string }
-  | { kind: "success"; key: string; booking: BookingDetailItem }
+  | { kind: "success"; key: string; booking: BookingDetailItem; payment: PaymentResponse }
   | { kind: "not-found"; key: string }
   | { kind: "error"; key: string };
 
@@ -34,10 +35,11 @@ export default function BookingConfirmationExperience({ reservationId }: { reser
     if (id === null) return;
 
     let active = true;
-    getBookingDetails(id).then((booking) => {
+    Promise.all([getBookingDetails(id), getMyPayments()]).then(([booking, payments]) => {
       if (!active) return;
-      setDetail(booking && booking.reservation_id === id
-        ? { kind: "success", key, booking }
+      const payment = bookingPaymentForReservation(payments, id);
+      setDetail(booking && booking.reservation_id === id && payment
+        ? { kind: "success", key, booking, payment }
         : { kind: "not-found", key });
     }).catch((error: unknown) => {
       if (!active) return;
@@ -76,12 +78,18 @@ export default function BookingConfirmationExperience({ reservationId }: { reser
     </div>}
     {current.kind === "success" && <div className="rounded-xl border border-teal-200 bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-2xl font-semibold text-slate-950">
-        {current.booking.status === "confirmed" ? "Booking created successfully" : "Reservation details"}
+        {current.booking.status === "confirmed" && current.payment.payment_status === "paid" ? "Booking payment recorded" : "Reservation details"}
       </h2>
-      {current.booking.status === "confirmed" && <p className="mt-2 text-slate-700">Your reservation has been created.</p>}
+      {current.booking.status === "confirmed" && current.payment.payment_status === "paid" && <p className="mt-2 text-slate-700">Your reservation and LikeHome demo payment are recorded. No external card or bank charge occurred.</p>}
+      {current.booking.status === "confirmed" && current.payment.payment_status === "pending" && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
+        <p>Your reservation exists, but payment is still pending.</p>
+        <Link href={paymentHref(current.payment.payment_id)} className="mt-2 inline-block font-medium text-teal-700 underline">Complete payment</Link>
+      </div>}
       <dl className="mt-6 grid gap-4 text-sm text-slate-700 sm:grid-cols-2">
         <div><dt className="font-medium text-slate-950">Reservation ID</dt><dd>{current.booking.reservation_id}</dd></div>
         <div><dt className="font-medium text-slate-950">Status</dt><dd className="capitalize">{current.booking.status}</dd></div>
+        <div><dt className="font-medium text-slate-950">LikeHome payment status</dt><dd className="capitalize">{current.payment.payment_status}</dd></div>
+        <div><dt className="font-medium text-slate-950">Payment amount</dt><dd>{dollars.format(current.payment.amount)}</dd></div>
         <div><dt className="font-medium text-slate-950">Hotel</dt><dd>{current.booking.hotel_name}</dd></div>
         <div><dt className="font-medium text-slate-950">Room type</dt><dd>{current.booking.room_type_name}</dd></div>
         {current.booking.guest_full_name && <div><dt className="font-medium text-slate-950">Primary guest</dt><dd>{current.booking.guest_full_name}</dd></div>}
