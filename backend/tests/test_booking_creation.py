@@ -2,13 +2,16 @@
 
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Lock
 from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
+from sqlalchemy.dialects import mysql
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -18,6 +21,7 @@ from app.models.hotel import Hotel
 from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
+from app.models.user import User
 from app.routers.booking_router import router as booking_router
 from app.repositories import booking_dao
 from app.schemas.booking_schema import BookingRequest, BookingResponse
@@ -32,6 +36,12 @@ def engine():
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
     Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add_all([
+            User(user_id=user_id, email=f"user{user_id}@example.com", password_hash="test")
+            for user_id in (7, 8)
+        ])
+        db.commit()
     yield engine
     engine.dispose()
 
@@ -265,6 +275,207 @@ def test_cancelled_stay_no_longer_blocks_overlap_but_confirmed_stay_does(engine)
         assert second.reservation_id != first.reservation_id
 
 
+@pytest.mark.parametrize(
+    ("new_check_in", "new_check_out", "overlaps"),
+    [
+        (date(2026, 11, 10), date(2026, 11, 12), True),   # same interval
+        (date(2026, 11, 11), date(2026, 11, 13), True),   # partial overlap
+        (date(2026, 11, 9), date(2026, 11, 13), True),    # new contains existing
+        (date(2026, 11, 11), date(2026, 11, 12), True),   # existing contains new
+        (date(2026, 11, 12), date(2026, 11, 14), False),  # adjacent checkout
+        (date(2026, 11, 8), date(2026, 11, 10), False),   # completely before
+    ],
+)
+def test_half_open_overlap_boundaries(engine, new_check_in, new_check_out, overlaps):
+    with Session(engine) as db:
+        booking_service.create_booking(db, request(
+            check_in=date(2026, 11, 10), check_out=date(2026, 11, 12)
+        ), 7)
+        next_request = request(check_in=new_check_in, check_out=new_check_out)
+        if overlaps:
+            with pytest.raises(HTTPException) as caught:
+                booking_service.create_booking(db, next_request, 7)
+            assert caught.value.status_code == 400
+        else:
+            booking_service.create_booking(db, next_request, 7)
+        expected = 1 if overlaps else 2
+        assert db.query(Reservation).count() == expected
+        assert db.query(Payment).count() == expected
+
+
+def test_completed_blocks_and_different_users_are_independent(engine):
+    with Session(engine) as db:
+        created = booking_service.create_booking(db, request(), 7)
+        db.get(Reservation, created.reservation_id).status = "completed"
+        db.commit()
+        with pytest.raises(HTTPException) as caught:
+            booking_service.create_booking(db, request(), 7)
+        assert caught.value.status_code == 400
+        other = booking_service.create_booking(db, request(), 8)
+        assert db.get(Reservation, other.reservation_id).user_id == 8
+        assert db.query(Reservation).count() == 2
+        assert db.query(Payment).count() == 2
+
+
+def test_owner_lock_uses_mysql_for_update_on_unique_user_row():
+    statements = []
+
+    class Result:
+        def scalar_one_or_none(self):
+            return 7
+
+    class RecordingDb:
+        def execute(self, statement):
+            statements.append(statement)
+            return Result()
+
+    assert booking_dao.lock_user_for_booking(RecordingDb(), 7)
+    sql = str(statements[0].compile(dialect=mysql.dialect()))
+    assert "FROM users" in sql
+    assert "users.user_id =" in sql
+    assert "users.status =" in sql
+    assert sql.endswith("FOR UPDATE")
+
+
+def test_provider_check_precedes_lock_and_overlap_check(engine, monkeypatch):
+    events = []
+    original_quote = booking_service.hotel_service.revalidate_hotel
+    original_lock = booking_dao.lock_user_for_booking
+    original_overlap = booking_dao.check_if_user_booked_by_date_range
+
+    def quote(info):
+        events.append("provider")
+        return original_quote(info)
+
+    def lock(db, user_id):
+        events.append("lock")
+        return original_lock(db, user_id)
+
+    def overlap(db, user_id, check_in, check_out):
+        events.append("overlap")
+        return original_overlap(db, user_id, check_in, check_out)
+
+    monkeypatch.setattr(booking_service.hotel_service, "revalidate_hotel", quote)
+    monkeypatch.setattr(booking_dao, "lock_user_for_booking", lock)
+    monkeypatch.setattr(booking_dao, "check_if_user_booked_by_date_range", overlap)
+    with Session(engine) as db:
+        # Model the plain auth read that precedes the booking service.
+        db.execute(select(User.user_id).where(User.user_id == 7)).scalar_one()
+        original_rollback = db.rollback
+
+        def rollback():
+            events.append("rollback")
+            original_rollback()
+
+        monkeypatch.setattr(db, "rollback", rollback)
+        booking_service.create_booking(db, request(), 7)
+    assert events == ["provider", "rollback", "lock", "overlap"]
+
+
+def test_lock_failure_rolls_back_without_booking_records(engine, monkeypatch):
+    def lock_failure(*_):
+        raise SQLAlchemyError("private lock failure")
+
+    monkeypatch.setattr(booking_dao, "lock_user_for_booking", lock_failure)
+    with Session(engine) as db:
+        with pytest.raises(HTTPException) as caught:
+            booking_service.create_booking(db, request(), 7)
+        assert caught.value.status_code == 500
+        assert caught.value.detail == "Failed to create reservation"
+        assert db.query(Reservation).count() == 0
+        assert db.query(Payment).count() == 0
+
+
+def test_inactive_user_cannot_pass_booking_lock(engine):
+    with Session(engine) as db:
+        db.get(User, 7).status = "deleted"
+        db.commit()
+        with pytest.raises(HTTPException) as caught:
+            booking_service.create_booking(db, request(), 7)
+        assert caught.value.status_code == 401
+        assert db.query(Reservation).count() == 0
+        assert db.query(Payment).count() == 0
+
+
+@pytest.mark.parametrize(
+    ("second_dates", "expected", "count"),
+    [
+        ((date(2026, 11, 1), date(2026, 11, 2)), [400, "created"], 1),
+        ((date(2026, 11, 2), date(2026, 11, 3)), ["created", "created"], 2),
+    ],
+)
+def test_simulated_concurrent_same_user_attempts(tmp_path, monkeypatch, second_dates, expected, count):
+    """SQLite ignores FOR UPDATE; a per-user test lock models the MySQL wait."""
+    file_engine = create_engine(f"sqlite:///{tmp_path / 'booking-race.db'}")
+    Base.metadata.create_all(file_engine)
+    with Session(file_engine) as db:
+        db.add(User(user_id=7, email="user7@example.com", password_hash="test"))
+        db.commit()
+
+    barrier = Barrier(2)
+    guard = Lock()
+    original_quote = booking_service.hotel_service.revalidate_hotel
+    original_lock = booking_dao.lock_user_for_booking
+
+    def synchronized_quote(info):
+        barrier.wait(timeout=5)
+        return original_quote(info)
+
+    class GuardedSession(Session):
+        held_guard = None
+
+        def release_guard(self):
+            if self.held_guard is not None:
+                self.held_guard.release()
+                self.held_guard = None
+
+        def commit(self):
+            try:
+                return super().commit()
+            finally:
+                self.release_guard()
+
+        def rollback(self):
+            try:
+                return super().rollback()
+            finally:
+                self.release_guard()
+
+    def simulated_lock(db, user_id):
+        assert user_id == 7
+        assert guard.acquire(timeout=5)
+        db.held_guard = guard
+        return original_lock(db, user_id)
+
+    monkeypatch.setattr(booking_service.hotel_service, "revalidate_hotel", synchronized_quote)
+    monkeypatch.setattr(booking_dao, "lock_user_for_booking", simulated_lock)
+
+    stays = [
+        (date(2026, 11, 1), date(2026, 11, 2)),
+        second_dates,
+    ]
+
+    def attempt(index):
+        with GuardedSession(file_engine) as db:
+            try:
+                return booking_service.create_booking(
+                    db, request(check_in=stays[index][0], check_out=stays[index][1]), 7
+                )
+            except HTTPException as error:
+                return error.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(attempt, range(2)))
+    assert sorted(
+        ("created" if isinstance(value, BookingResponse) else value for value in results),
+        key=str,
+    ) == expected
+    with Session(file_engine) as db:
+        assert db.query(Reservation).count() == count
+        assert db.query(Payment).count() == count
+    file_engine.dispose()
+
+
 def test_payment_stage_failure_rolls_back_all_records(engine, monkeypatch):
     original_stage = booking_service.booking_dao.stage_booking_record
 
@@ -347,8 +558,15 @@ def test_create_http_contract_uses_authenticated_user_and_rejects_partner(engine
         "user_id", "hotel_id", "room_type_id", "reservation_id", "payment_id"
     }
     assert response.json()["user_id"] == 7
+    overlap = client.post(
+        "/bookings/create", json=body,
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert overlap.status_code == 400
     with Session(engine) as db:
         assert db.get(Reservation, response.json()["reservation_id"]).user_id == 7
+        assert db.query(Reservation).count() == 1
+        assert db.query(Payment).count() == 1
     detail = client.get(
         f"/bookings/get-booking-details/{response.json()['reservation_id']}",
         headers={"Authorization": f"Bearer {user_token}"},

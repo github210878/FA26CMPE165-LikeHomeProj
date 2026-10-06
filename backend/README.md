@@ -183,11 +183,21 @@ service-fee multiplier. The recorded booking Payment amount applies the existing
 this row does not charge a card. Hotel, room, reservation, and payment writes
 commit together or roll back together.
 
-The submitted nightly price and property token are not independently
-revalidated against a stay-specific offer. Cached search prices do not verify
-the selected dates, occupancy, currency, availability, or rate. This endpoint
-must not be treated as a trusted checkout price or payment confirmation until
-a separate rate-revalidation contract exists.
+Booking creation revalidates the provider quote before its database critical
+section. It then starts a fresh transaction, locks the authenticated active
+User row, checks that user's non-cancelled reservations for overlapping
+half-open stay dates, and writes Hotel, RoomType, Reservation, and Payment in
+one commit. Locking the User row serializes same-user attempts even when the
+reservation query finds no rows. Overlap retains HTTP 400; rate changes retain
+HTTP 409. On MySQL/InnoDB, the waiting request checks overlap after the first
+transaction commits. A rare deadlock or lock timeout rolls back the booking
+and returns a generic server error; no automatic retry or extra provider call
+is made.
+
+The submitted price acknowledgements are compared with a fresh stay-specific
+provider quote before the database critical section. Cached search prices are
+display-only. Creating the local Payment record is not external payment
+processing or supplier reservation fulfillment.
 
 ### User sign up:
 

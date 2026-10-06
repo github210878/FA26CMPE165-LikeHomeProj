@@ -56,6 +56,18 @@ def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> B
         if nightly_price > MAX_MONEY or total_price > MAX_MONEY or payment_amount > MAX_MONEY:
             raise HTTPException(status_code=422, detail="Booking amount exceeds supported range")
 
+        # Authentication's earlier plain SELECT may have established an old
+        # REPEATABLE READ snapshot. End that read-only transaction before the
+        # booking critical section so the overlap read sees commits made while
+        # waiting for this user's row lock. No booking writes have begun yet.
+        db.rollback()
+        if not booking_dao.lock_user_for_booking(db, user_id):
+            raise HTTPException(
+                status_code=401,
+                detail="User is inactive or does not exist",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         booked = booking_dao.check_if_user_booked_by_date_range(
             db, user_id, booking_info.check_in_date, booking_info.check_out_date
         )
