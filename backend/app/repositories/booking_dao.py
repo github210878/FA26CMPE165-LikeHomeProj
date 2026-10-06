@@ -1,6 +1,7 @@
 from datetime import date
 
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 
 from app.models.hotel import Hotel
@@ -8,6 +9,16 @@ from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.models.user import User
+
+
+def lock_user_for_booking(db: Session, user_id: int) -> bool:
+    """Serialize this user's booking writes on a stable row, even with no stays."""
+    statement = (
+        select(User.user_id)
+        .where(User.user_id == user_id, User.status == "active")
+        .with_for_update()
+    )
+    return db.execute(statement).scalar_one_or_none() is not None
 
 
 def format_hotel_address(hotel: Hotel) -> str:

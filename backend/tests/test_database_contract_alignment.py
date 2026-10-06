@@ -94,6 +94,11 @@ def test_booking_requires_external_token_and_uses_hotel_model_field(monkeypatch)
         "check_if_user_booked_by_date_range",
         lambda *args: False,
     )
+    monkeypatch.setattr(
+        booking_service.booking_dao,
+        "lock_user_for_booking",
+        lambda *args: True,
+    )
     captured = {}
 
     def capture_hotel(db, hotel):
