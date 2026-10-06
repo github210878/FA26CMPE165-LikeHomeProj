@@ -7,6 +7,7 @@ from app.schemas.booking_schema import (
     BookingResponse,
     BookingRequest,
     CancellationResponse,
+    PaymentResponse,
 )
 from app.models.payment import Payment
 from app.repositories import booking_dao
@@ -150,6 +151,41 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     return booking_dao.get_payment_by_id(db, payment_id, user_id)
 
 
+def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentResponse:
+    """Mark one owned booking payment paid inside LikeHome; no external charge occurs."""
+    try:
+        reservation_id = booking_dao.get_owned_payment_reservation_id(db, payment_id, user_id)
+        if reservation_id is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        # Authentication and ownership reads may have opened a REPEATABLE READ
+        # snapshot. Lock the reservation first, matching cancellation order.
+        db.rollback()
+        reservation = booking_dao.lock_owned_reservation(db, reservation_id, user_id)
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        payment = booking_dao.lock_booking_payment(db, payment_id, reservation_id)
+        if payment is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        if payment.payment_type != "booking" or reservation.status == "cancelled":
+            raise HTTPException(status_code=409, detail="Payment cannot be completed")
+        if payment.payment_status not in ("pending", "paid"):
+            raise HTTPException(status_code=409, detail="Payment cannot be completed")
+        if payment.payment_status == "pending":
+            if reservation.status != "confirmed":
+                raise HTTPException(status_code=409, detail="Payment cannot be completed")
+            payment.payment_status = "paid"
+            result = PaymentResponse(**booking_dao.payment_result(payment))
+            db.commit()
+            return result
+        return PaymentResponse(**booking_dao.payment_result(payment))
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to record payment") from exc
+
+
 def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationResponse:
     """Record a cancellation atomically; this does not process an external refund."""
     try:
@@ -175,8 +211,11 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
             )
 
         booking_payment = booking_payments[0]
+        if booking_payment.payment_status not in ("pending", "paid"):
+            raise HTTPException(status_code=409, detail="Reservation payment state is ambiguous")
         reservation.status = "cancelled"
-        booking_payment.payment_status = "refunded"
+        if booking_payment.payment_status == "paid":
+            booking_payment.payment_status = "refunded"
         cancellation_payment = Payment(
             reservation_id=reservation.reservation_id,
             amount=reservation.total_price * cancellation_fee,

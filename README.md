@@ -301,10 +301,18 @@ Run backend tests with `python -m pytest -q -p no:cacheprovider tests`.
   transaction fails. A successful response includes `reservation_id`, `status`,
   `booking_payment_id`, `booking_payment_status`, `cancellation_payment_id`,
   `cancellation_amount`, and `cancellation_payment_status`.
-- Cancellation records the booking payment as `refunded` and a pending
-  cancellation payment equal to 20% of the reservation total in one database
-  transaction. This is database bookkeeping only; no external payment or refund
-  is processed.
+- Booking creation records a pending booking Payment. The authenticated
+  `POST /bookings/pay/{payment_id}` operation marks an owned pending booking
+  Payment paid in LikeHome, using its persisted amount. Repeated Pay returns
+  the already-paid result. This is an application-level demo payment; no card,
+  bank, or external provider is charged. Checkout opens a payment review page,
+  and confirmation displays persisted payment state only after payment.
+- Cancellation creates a pending cancellation Payment equal to 20% of the
+  reservation total. That percentage is the team's current implementation
+  policy (`CANCELLATION_FEE`), not a percentage specified by the course
+  requirement. A paid booking Payment becomes `refunded` in LikeHome's ledger;
+  an unpaid booking Payment stays `pending` but cannot be paid after the
+  reservation is cancelled. No external charge or refund is processed.
 
 
 ### Frontend

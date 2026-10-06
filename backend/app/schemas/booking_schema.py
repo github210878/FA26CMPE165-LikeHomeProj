@@ -74,11 +74,19 @@ class BookingResponse(BaseModel):
     payment_id: int
 
 
+class PaymentResponse(BaseModel):
+    payment_id: int
+    reservation_id: int
+    amount: float
+    payment_type: Literal["booking", "cancellation"]
+    payment_status: Literal["pending", "paid", "failed", "refunded"]
+
+
 class CancellationResponse(BaseModel):
     reservation_id: int
     status: Literal["cancelled"]
     booking_payment_id: int
-    booking_payment_status: Literal["refunded"]
+    booking_payment_status: Literal["pending", "refunded"]
     cancellation_payment_id: int
     cancellation_amount: float
     cancellation_payment_status: Literal["pending"]

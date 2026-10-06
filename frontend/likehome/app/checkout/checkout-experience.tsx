@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
 import type { HotelRevalidationResponse } from "@/lib/api-types";
-import { bookingConfirmationHref } from "@/lib/booking-confirmation";
+import { paymentHref } from "@/lib/payment";
 import { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote } from "@/lib/checkout";
 import type { CheckoutSelection } from "@/lib/checkout-selection";
 import { normalizedGuestInformation, validateGuestInformation, type GuestInformation, type GuestInformationErrors } from "@/lib/guest-information";
@@ -104,7 +104,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
       });
       if (result.kind === "created") {
         setPhase("success");
-        router.replace(bookingConfirmationHref(result.booking));
+        router.replace(paymentHref(result.booking.payment_id));
       } else {
         setQuote(result.quote);
         setNotice("The quote changed while you were confirming. Review this current quote and confirm again.");
@@ -160,7 +160,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
     </div>;
   }
   if (phase === "success") {
-    return <p role="status" className="mt-8 text-slate-700">Opening your booking confirmation…</p>;
+    return <p role="status" className="mt-8 text-slate-700">Opening payment review…</p>;
   }
   if (!quote) return null;
 
@@ -204,13 +204,13 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
         <div><dt className="font-medium text-slate-950">LikeHome total with service fee</dt><dd>{dollars.format(quote.likehome_reservation_total)}</dd></div>
         <div className="sm:col-span-2"><dt className="font-semibold text-slate-950">Booking amount</dt><dd className="text-lg font-semibold text-slate-950">{dollars.format(quote.likehome_payment_amount)} USD</dd></div>
       </dl>
-      <p className="mt-5 text-sm text-slate-600">No payment is collected in this checkout flow. Your booking is recorded after confirmation.</p>
+      <p className="mt-5 text-sm text-slate-600">Creating your reservation records a pending LikeHome payment. You will review its persisted amount before completing the internal demo payment step. No card is charged.</p>
     </div>
     {phase === "booking-error" && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">{bookingError}</p>}
     <button type="button" disabled={phase === "submitting" || phase === "booking-error"}
       onClick={() => void confirmBooking()}
       className="min-h-12 rounded-md bg-teal-700 px-6 font-semibold text-white hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60">
-      {phase === "submitting" ? "Creating booking…" : "Confirm booking"}
+      {phase === "submitting" ? "Creating booking…" : "Reserve and continue to payment"}
     </button>
     {phase === "booking-error" && <button type="button" onClick={() => void refreshQuote()} className="ml-4 min-h-11 font-medium text-teal-700 underline">Refresh quote</button>}
   </div>;

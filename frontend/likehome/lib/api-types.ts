@@ -73,6 +73,14 @@ export type BookingResponse = {
   payment_id: number;
 };
 
+export type PaymentResponse = {
+  payment_id: number;
+  reservation_id: number;
+  amount: number;
+  payment_type: "booking" | "cancellation";
+  payment_status: "pending" | "paid" | "failed" | "refunded";
+};
+
 export type RegisterUserRequest = {
   email: string;
   password: string;
@@ -139,7 +147,7 @@ export type CancellationResponse = {
   reservation_id: number;
   status: "cancelled";
   booking_payment_id: number;
-  booking_payment_status: "refunded";
+  booking_payment_status: "pending" | "refunded";
   cancellation_payment_id: number;
   cancellation_amount: number;
   cancellation_payment_status: "pending";

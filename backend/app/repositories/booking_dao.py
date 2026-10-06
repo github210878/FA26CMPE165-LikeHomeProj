@@ -155,29 +155,13 @@ def get_all_booking_by_user_id(db: Session, user_id: int):
 
 
 def get_all_payments_by_user_id(db: Session, user_id: int):
-
     res = (
-        db.query(Payment, Reservation, RoomType, User, Hotel)
+        db.query(Payment)
         .join(Reservation, Payment.reservation_id == Reservation.reservation_id)
-        .join(User, Reservation.user_id == User.user_id)
-        .join(RoomType, Reservation.room_type_id == RoomType.room_type_id)
-        .join(Hotel, RoomType.hotel_id == Hotel.hotel_id)
         .filter(Reservation.user_id == user_id)
         .all()
     )
-
-    return [
-        {
-            "payment_id": payment.payment_id,
-            "bill_to": user.full_name,
-            "hotel_name": hotel.name,
-            "room_type_name": room_type.type_name,
-            "check_in_date": reservation.check_in_date,
-            "check_out_date": reservation.check_out_date,
-            "created_at": payment.created_at,
-        }
-        for payment, reservation, room_type, user, hotel, in res
-    ]
+    return [payment_result(payment) for payment in res]
 
 
 def get_booking_by_id(db: Session, booking_id: int, user_id: int):
@@ -217,11 +201,8 @@ def get_booking_by_id(db: Session, booking_id: int, user_id: int):
 
 def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     res = (
-        db.query(Payment, Reservation, RoomType, User, Hotel)
+        db.query(Payment)
         .join(Reservation, Payment.reservation_id == Reservation.reservation_id)
-        .join(RoomType, Reservation.room_type_id == RoomType.room_type_id)
-        .join(User, Reservation.user_id == User.user_id)
-        .join(Hotel, RoomType.hotel_id == Hotel.hotel_id)
         .filter(
             Payment.payment_id == payment_id,
             Reservation.user_id == user_id,
@@ -231,23 +212,44 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     if res is None:
         return None
 
-    (
-        payment,
-        reservation,
-        room_type,
-        user,
-        hotel,
-    ) = res
+    return payment_result(res)
 
+
+def payment_result(payment: Payment):
     return {
         "payment_id": payment.payment_id,
-        "bill_to": user.full_name,
-        "hotel_name": hotel.name,
-        "room_type_name": room_type.type_name,
-        "check_in_date": reservation.check_in_date,
-        "check_out_date": reservation.check_out_date,
-        "created_at": payment.created_at,
+        "reservation_id": payment.reservation_id,
+        "amount": payment.amount,
+        "payment_type": payment.payment_type,
+        "payment_status": payment.payment_status,
     }
+
+
+def get_owned_payment_reservation_id(db: Session, payment_id: int, user_id: int):
+    return (
+        db.query(Payment.reservation_id)
+        .join(Reservation, Payment.reservation_id == Reservation.reservation_id)
+        .filter(Payment.payment_id == payment_id, Reservation.user_id == user_id)
+        .scalar()
+    )
+
+
+def lock_owned_reservation(db: Session, reservation_id: int, user_id: int):
+    return (
+        db.query(Reservation)
+        .filter(Reservation.reservation_id == reservation_id, Reservation.user_id == user_id)
+        .with_for_update()
+        .first()
+    )
+
+
+def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
+    return (
+        db.query(Payment)
+        .filter(Payment.payment_id == payment_id, Payment.reservation_id == reservation_id)
+        .with_for_update()
+        .first()
+    )
 
 
 def check_if_user_booked_by_date_range(
