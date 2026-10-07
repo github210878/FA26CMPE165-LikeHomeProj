@@ -27,6 +27,18 @@ If it runs at another address, set `NEXT_PUBLIC_API_BASE_URL` in a local
 local default. Valid searches call `GET /hotels/search` and display the
 returned properties; the browser does not call SerpApi directly.
 
+After a search, maximum nightly price and amenity filters refine only the loaded
+properties in the browser. The maximum is inclusive, uses `price_per_night` in
+USD, and accepts nonnegative decimal amounts (including zero). A blank limit
+shows all prices; invalid input shows an error and does not apply a price limit.
+Missing prices remain visible without a limit and are excluded with a valid
+limit. Amenity options come from the original loaded results, ignoring blank
+values and duplicates after trimming whitespace and comparing case-insensitively.
+A stay must contain **all** selected amenities as well as satisfy the price limit.
+Counts refer to matching and loaded stays, not a global hotel total. Clear filters
+restores the original results; a new search resets filters. Filter changes and
+clearing make no API requests and consume no additional SerpApi quota.
+
 Run the frontend tests with `npm test`, and run the lint check with
 `npm run lint`. The tests use Node's built-in test runner and make no real API
 requests.

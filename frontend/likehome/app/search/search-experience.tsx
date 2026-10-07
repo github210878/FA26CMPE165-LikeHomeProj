@@ -2,10 +2,12 @@
 
 import { useRef, useState } from "react";
 import HotelResultCard from "@/components/HotelResultCard";
+import HotelFilters from "@/components/HotelFilters";
 import { ApiError } from "@/lib/api";
 import type { HotelSearchResponse } from "@/lib/api-types";
 import { searchHotels, type SearchValues } from "@/lib/search";
 import { checkoutHref } from "@/lib/checkout-selection";
+import { filterHotels, getAmenityOptions, type HotelFilterValues } from "@/lib/hotel-filters";
 import SearchForm from "./search-form";
 
 type SearchStatus = "idle" | "loading" | "error" | "success";
@@ -15,7 +17,14 @@ export default function SearchExperience() {
   const [errorMessage, setErrorMessage] = useState("");
   const [results, setResults] = useState<HotelSearchResponse | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
+  const [filters, setFilters] = useState<HotelFilterValues>({ maxPrice: "", amenities: [] });
   const requestId = useRef(0);
+  const filteredHotels = results ? filterHotels(results.properties, filters) : [];
+  const amenityOptions = results ? getAmenityOptions(results.properties) : [];
+
+  function clearFilters() {
+    setFilters({ maxPrice: "", amenities: [] });
+  }
 
   async function handleSearch(values: SearchValues) {
     const currentRequest = ++requestId.current;
@@ -23,6 +32,7 @@ export default function SearchExperience() {
     setResults(null);
     setSelectedSearch(null);
     setErrorMessage("");
+    clearFilters();
 
     try {
       const response = await searchHotels(values);
@@ -59,10 +69,17 @@ export default function SearchExperience() {
         )}
         {status === "success" && results && results.properties.length > 0 && (
           <>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{results.result_count} stays found for {results.search_query}.</p>
+            <p role="status" className="mt-2 text-sm leading-6 text-slate-600">{filteredHotels.length} of {results.properties.length} loaded stays match for {results.search_query}.</p>
+            <HotelFilters values={filters} amenityOptions={amenityOptions} onChange={setFilters} onClear={clearFilters} />
+            {filteredHotels.length === 0 && (
+              <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+                <p className="text-sm leading-6 text-slate-600">No stays match your current filters.</p>
+                <button type="button" onClick={clearFilters} className="mt-3 min-h-11 rounded-md px-3 text-sm font-medium text-teal-700 hover:bg-teal-50">Clear filters</button>
+              </div>
+            )}
             <ul className="mt-6 grid gap-4 md:grid-cols-2">
-              {results.properties.map((hotel, index) => (
-                <li key={hotel.property_token ?? `${hotel.name ?? "hotel"}-${index}`} className="min-w-0">
+              {filteredHotels.map((hotel) => (
+                <li key={hotel.property_token ?? `${hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}`} className="min-w-0">
                   <HotelResultCard hotel={hotel} checkoutHref={selectedSearch ? checkoutHref(selectedSearch, hotel) : null} />
                 </li>
               ))}
