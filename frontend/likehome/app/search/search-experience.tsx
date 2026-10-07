@@ -8,6 +8,7 @@ import type { HotelSearchResponse } from "@/lib/api-types";
 import { searchHotels, type SearchValues } from "@/lib/search";
 import { checkoutHref } from "@/lib/checkout-selection";
 import { filterHotels, getAmenityOptions, type HotelFilterValues } from "@/lib/hotel-filters";
+import { HOTEL_SORT_OPTIONS, sortHotels, type HotelSort } from "@/lib/hotel-sort";
 import SearchForm from "./search-form";
 
 type SearchStatus = "idle" | "loading" | "error" | "success";
@@ -18,8 +19,10 @@ export default function SearchExperience() {
   const [results, setResults] = useState<HotelSearchResponse | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
   const [filters, setFilters] = useState<HotelFilterValues>({ maxPrice: "", amenities: [] });
+  const [sort, setSort] = useState<HotelSort>("recommended");
   const requestId = useRef(0);
   const filteredHotels = results ? filterHotels(results.properties, filters) : [];
+  const displayedHotels = sortHotels(filteredHotels, sort);
   const amenityOptions = results ? getAmenityOptions(results.properties) : [];
 
   function clearFilters() {
@@ -33,6 +36,7 @@ export default function SearchExperience() {
     setSelectedSearch(null);
     setErrorMessage("");
     clearFilters();
+    setSort("recommended");
 
     try {
       const response = await searchHotels(values);
@@ -69,7 +73,22 @@ export default function SearchExperience() {
         )}
         {status === "success" && results && results.properties.length > 0 && (
           <>
-            <p role="status" className="mt-2 text-sm leading-6 text-slate-600">{filteredHotels.length} of {results.properties.length} loaded stays match for {results.search_query}.</p>
+            <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <p role="status" className="text-sm leading-6 text-slate-600">{filteredHotels.length} of {results.properties.length} loaded stays match for {results.search_query}.</p>
+              <div className="grid gap-2 text-sm text-slate-800 sm:w-64">
+                <label htmlFor="hotel-sort" className="font-medium">Sort stays</label>
+                <select
+                  id="hotel-sort"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as HotelSort)}
+                  className="min-h-11 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3"
+                >
+                  {HOTEL_SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <HotelFilters values={filters} amenityOptions={amenityOptions} onChange={setFilters} onClear={clearFilters} />
             {filteredHotels.length === 0 && (
               <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
@@ -78,7 +97,7 @@ export default function SearchExperience() {
               </div>
             )}
             <ul className="mt-6 grid gap-4 md:grid-cols-2">
-              {filteredHotels.map((hotel) => (
+              {displayedHotels.map((hotel) => (
                 <li key={hotel.property_token ?? `${hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}`} className="min-w-0">
                   <HotelResultCard hotel={hotel} checkoutHref={selectedSearch ? checkoutHref(selectedSearch, hotel) : null} />
                 </li>

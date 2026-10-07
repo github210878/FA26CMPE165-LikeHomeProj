@@ -39,6 +39,14 @@ Counts refer to matching and loaded stays, not a global hotel total. Clear filte
 restores the original results; a new search resets filters. Filter changes and
 clearing make no API requests and consume no additional SerpApi quota.
 
+The Sort stays select applies after filtering. Recommended / Default preserves
+the API ordering; price can be sorted low to high or high to low, and guest
+rating high to low. Missing prices or ratings appear last in their respective
+sorts and are not hidden by sorting. Equal values retain their relative API
+order. Sorting uses a copy and preserves the original hotel objects and search
+context. Clear filters keeps the selected sort; a new search resets sorting to
+Recommended / Default. Changing the sort makes no API or SerpApi requests.
+
 Run the frontend tests with `npm test`, and run the lint check with
 `npm run lint`. The tests use Node's built-in test runner and make no real API
 requests.
