@@ -9,6 +9,7 @@ import { ApiError } from "../lib/api.ts";
 import { checkoutHref, parseCheckoutSelection } from "../lib/checkout-selection.ts";
 import { filterHotels, getAmenityOptions, parseMaxPrice } from "../lib/hotel-filters.ts";
 import { getHotelThumbnailUrl } from "../lib/hotel-thumbnail.ts";
+import { HOTEL_SORT_OPTIONS, sortHotels } from "../lib/hotel-sort.ts";
 import { searchHotels } from "../lib/search.ts";
 
 const originalFetch = globalThis.fetch;
@@ -127,6 +128,7 @@ function searchHarness() {
     "@/lib/search": { searchHotels },
     "@/lib/checkout-selection": { checkoutHref },
     "@/lib/hotel-filters": { filterHotels, getAmenityOptions },
+    "@/lib/hotel-sort": { HOTEL_SORT_OPTIONS, sortHotels },
     "./search-form": { default: SearchForm },
   });
 
@@ -150,6 +152,7 @@ function searchHarness() {
         cards: nodes.filter((node) => node.type === HotelResultCard),
         form: nodes.find((node) => node.type === SearchForm),
         price: nodes.find((node) => node.props?.id === "hotel-max-price"),
+        sort: nodes.find((node) => node.props?.id === "hotel-sort"),
         checkbox: (value) => nodes.find((node) => node.type === "input" && node.props.value === value),
         clearButton: nodes.find((node) => node.type === "button" && node.props.children === "Clear filters"),
       };
@@ -251,6 +254,7 @@ test("API zero results are distinct from filters and absent amenities create no 
   assert.match(view.html, /No hotels found for this search/);
   assert.ok(!view.html.includes("No stays match your current filters"));
   assert.equal(view.price, undefined);
+  assert.equal(view.sort, undefined);
 
   properties = [hotel("No amenities", null, null, null)];
   await view.form.props.onSearch(search);
@@ -258,6 +262,101 @@ test("API zero results are distinct from filters and absent amenities create no 
   assert.match(view.html, /No amenities listed in these results/);
   assert.equal(view.nodes.filter((node) => node.type === "input" && node.props.type === "checkbox").length, 0);
   assert.equal(view.cards[0].props.checkoutHref, null);
+});
+
+test("sort control composes with filters, retains context and counts, clears locally, and resets on a new search", async () => {
+  const ratedHotels = hotels.map((hotel, index) => ({
+    ...hotel, rating: [null, 4.3, 4.8, 4.8, null][index], thumbnail: "https://images.example.com/hotel.jpg",
+  }));
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(JSON.stringify({
+      search_query: "San Jose hotels", check_in_date: search.checkIn, check_out_date: search.checkOut,
+      result_count: ratedHotels.length, properties: ratedHotels,
+    }));
+  };
+  const harness = searchHarness();
+  await harness.render().form.props.onSearch(search);
+  let view = harness.render();
+  const loaded = view.cards.map((card) => card.props.hotel);
+  const originalHrefs = new Map(view.cards.map((card) => [card.props.hotel, card.props.checkoutHref]));
+  assert.equal(view.sort.props.value, "recommended");
+  assert.match(view.html, /<label[^>]*for="hotel-sort"[^>]*>Sort stays<\/label>/);
+  assert.equal(view.sort.type, "select");
+  assert.match(view.sort.props.className, /min-h-11/);
+  assert.deepEqual(view.nodes.filter((node) => node.type === "option").map((node) => node.props.children), [
+    "Recommended / Default", "Price: Low to High", "Price: High to Low", "Guest Rating: High to Low",
+  ]);
+
+  for (const [sort, expected] of [
+    ["price-desc", ["Luxury", "Gym stay", "Pool stay", "Budget", "Unknown price"]],
+    ["price-asc", ["Budget", "Pool stay", "Gym stay", "Luxury", "Unknown price"]],
+    ["rating-desc", ["Gym stay", "Luxury", "Pool stay", "Budget", "Unknown price"]],
+  ]) {
+    view.sort.props.onChange({ target: { value: sort } });
+    view = harness.render();
+    assert.deepEqual(names(view.cards.map((card) => card.props.hotel)), expected);
+    assert.match(view.html, /5 of 5 loaded stays/);
+    assert.equal(view.sort.props.value, sort);
+    assert.ok(!view.html.includes("No stays match"));
+    for (const card of view.cards) {
+      assert.ok(loaded.includes(card.props.hotel));
+      assert.equal(card.props.checkoutHref, originalHrefs.get(card.props.hotel));
+      assert.equal(card.props.hotel.thumbnail, "https://images.example.com/hotel.jpg");
+    }
+  }
+  const selection = parseCheckoutSelection(Object.fromEntries(new URL(view.cards[0].props.checkoutHref, "https://likehome.test").searchParams));
+  assert.deepEqual(selection, {
+    property_token: "Gym stay", q: "San Jose hotels", check_in_date: search.checkIn, check_out_date: search.checkOut,
+    adults: 3, children: 0, currency: "USD", gl: "us", hl: "en", displayed_price_per_night: 150.5,
+  });
+
+  view.sort.props.onChange({ target: { value: "price-desc" } });
+  view = harness.render();
+  view.price.props.onChange({ target: { value: "150.5" } });
+  view = harness.render();
+  assert.deepEqual(names(view.cards.map((card) => card.props.hotel)), ["Gym stay", "Pool stay", "Budget"]);
+  view.checkbox("pool").props.onChange({ target: { checked: true } });
+  view = harness.render();
+  assert.deepEqual(names(view.cards.map((card) => card.props.hotel)), ["Gym stay", "Pool stay"]);
+  assert.match(view.html, /2 of 5 loaded stays/);
+  view.sort.props.onChange({ target: { value: "recommended" } });
+  view = harness.render();
+  assert.deepEqual(names(view.cards.map((card) => card.props.hotel)), ["Pool stay", "Gym stay"]);
+  assert.equal(view.price.props.value, "150.5");
+  assert.equal(view.checkbox("pool").props.checked, true);
+  view.sort.props.onChange({ target: { value: "price-desc" } });
+  view = harness.render();
+  view.clearButton.props.onClick();
+  view = harness.render();
+  assert.equal(view.sort.props.value, "price-desc");
+  assert.equal(view.price.props.value, "");
+  assert.equal(view.checkbox("pool").props.checked, false);
+  assert.deepEqual(names(view.cards.map((card) => card.props.hotel)), ["Luxury", "Gym stay", "Pool stay", "Budget", "Unknown price"]);
+
+  view.price.props.onChange({ target: { value: "99" } });
+  view = harness.render();
+  view.checkbox("pool").props.onChange({ target: { checked: true } });
+  view = harness.render();
+  view.sort.props.onChange({ target: { value: "rating-desc" } });
+  view = harness.render();
+  assert.equal(view.cards.length, 0);
+  assert.match(view.html, /No stays match your current filters/);
+  assert.match(view.html, /0 of 5 loaded stays/);
+  view.nodes.filter((node) => node.type === "button" && node.props.children === "Clear filters").at(-1).props.onClick();
+  view = harness.render();
+  assert.equal(view.sort.props.value, "rating-desc");
+  assert.equal(view.cards.length, 5);
+  assert.equal(calls, 1);
+
+  await view.form.props.onSearch({ ...search, destination: "Los Angeles hotels" });
+  view = harness.render();
+  assert.equal(view.sort.props.value, "recommended");
+  assert.deepEqual(view.cards.map((card) => card.props.hotel), ratedHotels);
+  assert.equal(view.price.props.value, "");
+  assert.equal(view.checkbox("pool").props.checked, false);
+  assert.equal(calls, 2); // Only the explicit search submissions make requests.
 });
 
 test("filtered card keeps lazy thumbnail and Select stay href, including a price-unavailable fallback", () => {
