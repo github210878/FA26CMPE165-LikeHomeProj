@@ -9,6 +9,7 @@ import type { HotelRevalidationResponse } from "@/lib/api-types";
 import { paymentHref } from "@/lib/payment";
 import { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote } from "@/lib/checkout";
 import type { CheckoutSelection } from "@/lib/checkout-selection";
+import { checkoutPriceBreakdown } from "@/lib/checkout-pricing";
 import { normalizedGuestInformation, validateGuestInformation, type GuestInformation, type GuestInformationErrors } from "@/lib/guest-information";
 
 type Phase = "loading" | "ready" | "unavailable" | "provider-error" | "error" |
@@ -163,6 +164,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
     return <p role="status" className="mt-8 text-slate-700">Opening payment review…</p>;
   }
   if (!quote) return null;
+  const priceBreakdown = checkoutPriceBreakdown(quote);
 
   return <div className="mt-8 space-y-6">
     <div className="grid gap-4 rounded-lg border border-slate-200 bg-white p-5 sm:grid-cols-2 sm:p-6">
@@ -199,10 +201,12 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
         <div><dt className="font-medium text-slate-950">Provider listing</dt><dd>{quote.source}</dd></div>
         <div><dt className="font-medium text-slate-950">Guest capacity</dt><dd>{quote.guest_capacity}</dd></div>
         <div><dt className="font-medium text-slate-950">Current base nightly average</dt><dd>{dollars.format(quote.current_price_per_night)}</dd></div>
-        <div><dt className="font-medium text-slate-950">Provider base stay total</dt><dd>{dollars.format(quote.provider_base_total)}</dd></div>
         {quote.provider_total_with_taxes_fees !== null && <div><dt className="font-medium text-slate-950">Provider listed stay total (reference)</dt><dd>{dollars.format(quote.provider_total_with_taxes_fees)}</dd></div>}
+        <div><dt className="font-medium text-slate-950">Stay subtotal</dt><dd>{dollars.format(priceBreakdown.baseStayTotal)}</dd></div>
+        <div><dt className="font-medium text-slate-950">LikeHome service fee</dt><dd>{dollars.format(priceBreakdown.serviceFee)}</dd></div>
         <div><dt className="font-medium text-slate-950">LikeHome total with service fee</dt><dd>{dollars.format(quote.likehome_reservation_total)}</dd></div>
-        <div className="sm:col-span-2"><dt className="font-semibold text-slate-950">Booking amount</dt><dd className="text-lg font-semibold text-slate-950">{dollars.format(quote.likehome_payment_amount)} USD</dd></div>
+        <div><dt className="font-medium text-slate-950">Tax</dt><dd>{dollars.format(priceBreakdown.tax)}</dd></div>
+        <div className="border-t border-slate-200 pt-4 sm:col-span-2"><dt className="font-semibold text-slate-950">Final booking total</dt><dd className="text-lg font-semibold text-slate-950">{dollars.format(priceBreakdown.finalTotal)} USD</dd></div>
       </dl>
       <p className="mt-5 text-sm text-slate-600">Creating your reservation records a pending LikeHome payment. You will review its persisted amount before completing the internal demo payment step. No card is charged.</p>
     </div>
