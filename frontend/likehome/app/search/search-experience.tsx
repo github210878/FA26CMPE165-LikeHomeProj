@@ -22,11 +22,14 @@ export default function SearchExperience() {
   const [error, setError] = useState<SearchError | null>(null);
   const [results, setResults] = useState<HotelSearchResponse | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [pageError, setPageError] = useState<SearchError | null>(null);
   const [filters, setFilters] = useState<HotelFilterValues>({ maxPrice: "", amenities: [] });
   const [sort, setSort] = useState<HotelSort>("recommended");
   const [restoredSearch, setRestoredSearch] = useState<{ values: SearchValues; version: number } | null>(null);
   const requestId = useRef(0);
   const pending = useRef(false);
+  const pendingPage = useRef<number | null>(null);
   const needsFreshSearch = useRef(false);
   const lastSearch = useRef<{ values: SearchValues; fresh: boolean } | null>(null);
   const filteredHotels = results ? filterHotels(results.properties, filters) : [];
@@ -43,9 +46,12 @@ export default function SearchExperience() {
     lastSearch.current = { values: { ...values }, fresh };
     rememberRecentSearch(values);
     const currentRequest = ++requestId.current;
+    pendingPage.current = null;
     setStatus("loading");
     setResults(null);
     setSelectedSearch(null);
+    setIsLoadingMore(false);
+    setPageError(null);
     if (!retry) setError(null);
     clearFilters();
     setSort("recommended");
@@ -63,6 +69,33 @@ export default function SearchExperience() {
       setStatus("error");
     } finally {
       pending.current = false;
+    }
+  }
+
+  async function loadNextPage() {
+    const currentRequest = requestId.current;
+    if (pending.current || isLoadingMore || pendingPage.current === currentRequest || !selectedSearch || !results?.next_page_token) return;
+    pendingPage.current = currentRequest;
+    setIsLoadingMore(true);
+    setPageError(null);
+    try {
+      const nextPage = await searchHotels(selectedSearch, {
+        nextPageToken: results.next_page_token,
+        fresh: lastSearch.current?.fresh ?? false,
+      });
+      if (currentRequest !== requestId.current) return;
+      setResults((current) => current ? {
+        ...current,
+        result_count: current.result_count + nextPage.result_count,
+        properties: [...current.properties, ...nextPage.properties],
+        next_page_token: nextPage.next_page_token,
+      } : current);
+    } catch (loadError) {
+      if (currentRequest !== requestId.current) return;
+      setPageError(searchError(loadError));
+    } finally {
+      if (pendingPage.current === currentRequest) pendingPage.current = null;
+      if (currentRequest === requestId.current) setIsLoadingMore(false);
     }
   }
 
@@ -85,9 +118,13 @@ export default function SearchExperience() {
     needsFreshSearch.current = hasErrors;
     setRestoredSearch((previous) => ({ values, version: (previous?.version ?? 0) + 1 }));
     if (hasErrors) {
+      requestId.current += 1;
+      pendingPage.current = null;
       setStatus("idle");
       setResults(null);
       setSelectedSearch(null);
+      setIsLoadingMore(false);
+      setPageError(null);
       setError(null);
       lastSearch.current = null;
       clearFilters();
@@ -150,12 +187,38 @@ export default function SearchExperience() {
               </div>
             )}
             <ul className="mt-6 grid gap-4 md:grid-cols-2">
-              {displayedHotels.map((hotel) => (
-                <li key={hotel.property_token ?? `${hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}`} className="min-w-0">
+              {displayedHotels.map((hotel, displayIndex) => (
+                <li
+                  key={`${hotel.property_token ?? hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}-${displayIndex}`}
+                  className="min-w-0"
+                >
                   <HotelResultCard hotel={hotel} checkoutHref={selectedSearch ? checkoutHref(selectedSearch, hotel) : null} />
                 </li>
               ))}
             </ul>
+            {pageError && (
+              <div className="mt-6">
+                <ErrorState
+                  title={pageError.title}
+                  message={pageError.message}
+                  onRetry={pageError.retryable ? loadNextPage : undefined}
+                  isRetrying={isLoadingMore}
+                />
+              </div>
+            )}
+            {results.next_page_token && !pageError && (
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void loadNextPage()}
+                  disabled={isLoadingMore}
+                  aria-busy={isLoadingMore}
+                  className="min-h-11 rounded-md border border-teal-700 px-5 font-medium text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoadingMore ? "Loading more stays…" : "Load more stays"}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

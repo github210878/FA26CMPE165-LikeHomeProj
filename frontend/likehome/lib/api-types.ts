@@ -13,6 +13,7 @@ export type HotelSearchResponse = {
   check_out_date: string;
   result_count: number;
   properties: HotelSearchResult[];
+  next_page_token?: string | null;
 };
 
 export type HotelRevalidationRequest = {

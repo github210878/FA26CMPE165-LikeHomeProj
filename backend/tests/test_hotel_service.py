@@ -307,6 +307,21 @@ def test_next_page_token_is_returned(monkeypatch):
     assert result.next_page_token == "next-page-123"
 
 
+def test_nested_serpapi_next_page_token_is_returned(monkeypatch):
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        lambda params: {
+            "properties": [{"name": "Hotel A"}],
+            "serpapi_pagination": {"next_page_token": "nested-next-page-123"},
+        },
+    )
+
+    result = hotel_service.search_hotels(make_request(), db=object())
+
+    assert result.next_page_token == "nested-next-page-123"
+
+
 def test_next_page_token_is_forwarded_to_serpapi(monkeypatch):
     captured = {}
 

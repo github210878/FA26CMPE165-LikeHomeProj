@@ -8,16 +8,22 @@ export type SearchValues = {
   guests: string;
 };
 
-export type SearchOptions = { fresh?: boolean };
+export type SearchOptions = {
+  fresh?: boolean;
+  nextPageToken?: string | null;
+};
 
-export function hotelSearchParams(values: SearchValues, options: SearchOptions = {}): URLSearchParams {
+export function hotelSearchParams(values: SearchValues, options: SearchOptions | string | null = {}): URLSearchParams {
+  // Preserve existing callers that pass a pagination token as the second argument.
+  const resolvedOptions: SearchOptions = typeof options === "string" ? { nextPageToken: options } : options ?? {};
   const params = new URLSearchParams({
     q: values.destination.trim(),
     check_in_date: values.checkIn,
     check_out_date: values.checkOut,
     adults: String(Number(values.guests)),
   });
-  if (options.fresh) params.set("no_cache", "true");
+  if (resolvedOptions.nextPageToken) params.set("next_page_token", resolvedOptions.nextPageToken);
+  if (resolvedOptions.fresh) params.set("no_cache", "true");
   return params;
 }
 
@@ -52,14 +58,15 @@ function parseHotelSearchResponse(value: unknown): HotelSearchResponse {
     !Number.isInteger(value.result_count) ||
     value.result_count < 0 ||
     !Array.isArray(value.properties) ||
-    !value.properties.every(isHotelSearchResult)) {
+    !value.properties.every(isHotelSearchResult) ||
+    (value.next_page_token !== undefined && value.next_page_token !== null && typeof value.next_page_token !== "string")) {
     throw new Error("Hotel search returned an unexpected response");
   }
 
   return value as HotelSearchResponse;
 }
 
-export async function searchHotels(values: SearchValues, options: SearchOptions = {}): Promise<HotelSearchResponse> {
+export async function searchHotels(values: SearchValues, options: SearchOptions | string | null = {}): Promise<HotelSearchResponse> {
   const response = await getJson<unknown>(`/hotels/search?${hotelSearchParams(values, options)}`, {
     cache: "no-store",
   });

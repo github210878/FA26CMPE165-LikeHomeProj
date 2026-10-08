@@ -25,6 +25,16 @@ test("validated form values map to the current hotel query contract", () => {
   ]);
 });
 
+test("next page tokens are sent back to the backend unchanged", () => {
+  assert.deepEqual([...hotelSearchParams(values, "next-page-token").entries()], [
+    ["q", "San Jose hotels"],
+    ["check_in_date", "2026-10-05"],
+    ["check_out_date", "2026-10-08"],
+    ["adults", "3"],
+    ["next_page_token", "next-page-token"],
+  ]);
+});
+
 test("live search GET returns normalized hotel results", async () => {
   let requestedUrl;
   const payload = {

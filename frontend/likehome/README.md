@@ -41,6 +41,8 @@ backend forwards `no_cache=true` to SerpApi to request updated results instead
 of its provider cache. Each replay uses SerpApi search quota. The loading,
 empty-result, and retry states are shared with a normal search; retrying a
 replay keeps the fresh-result setting. A new search resets filters and sorting.
+Loading more results for a replay also keeps the fresh-result setting. Starting
+another search discards responses from earlier pagination requests.
 
 Saved dates are validated again at replay time. An expired stay is restored
 with inline errors so the user can correct it before a request is sent.
