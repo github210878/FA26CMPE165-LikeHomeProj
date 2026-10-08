@@ -159,6 +159,8 @@ def _build_serpapi_params(search_info: HotelSearchRequest) -> dict:
 
     if search_info.next_page_token:
         params["next_page_token"] = search_info.next_page_token
+    if search_info.no_cache:
+        params["no_cache"] = "true"
 
     return params
 

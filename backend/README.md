@@ -130,8 +130,14 @@ backend/
 - `price_per_night` is the numeric `rate_per_night.extracted_lowest` value from
   SerpApi in the requested currency. `rating` comes from `overall_rating`.
   Missing or malformed values are returned as `null`.
-- Search results are returned directly to the client and are not stored in MySQL.
-  Existing SerpApi-shaped result fields remain available for current clients.
+- Search results are returned directly to the client and also cached in MySQL
+  on a best-effort basis. `/hotels/search` fetches SerpApi results rather than
+  reading the local cache. Existing SerpApi-shaped result fields remain available
+  for current clients.
+- For 4.7.2 recent-search replay, optional `no_cache=true` is forwarded to SerpApi
+  to bypass its provider cache and request fresh results. The default is `false`.
+  Replays consume SerpApi search quota; no new environment settings are required.
+  See [SerpApi's caching parameter](https://serpapi.com/google-hotels-api).
 - Dates must be real calendar dates in `YYYY-MM-DD` format. Check-in may be
   today (using the backend server's local date) or later; check-out must be
   strictly after check-in. Guest counts must be whole numbers: adults 1-20,

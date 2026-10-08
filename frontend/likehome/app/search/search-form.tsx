@@ -1,22 +1,19 @@
 "use client";
 
 import { useState, type ChangeEvent, type FormEvent } from "react";
-import { validateSearchInputs } from "@/lib/search-validation.mjs";
+import { validateSearchValues } from "@/lib/search-validation.mjs";
 import type { SearchValues } from "@/lib/search";
 
 type SearchFormErrors = Partial<Record<"destination" | "checkIn" | "checkOut" | "guests", string>>;
 
-function validateForm(form: HTMLFormElement): SearchFormErrors {
+function readForm(form: HTMLFormElement): SearchValues {
   const data = new FormData(form);
-  const errors: SearchFormErrors = validateSearchInputs({
+  return {
+    destination: String(data.get("destination") ?? "").trim(),
     checkIn: String(data.get("checkIn") ?? ""),
     checkOut: String(data.get("checkOut") ?? ""),
-    guests: String(data.get("guests") ?? ""),
-  });
-  if (!String(data.get("destination") ?? "").trim()) {
-    errors.destination = "Enter a destination.";
-  }
-  return errors;
+    guests: String(data.get("guests") ?? "").trim(),
+  };
 }
 
 function inputClass(invalid: boolean) {
@@ -26,16 +23,19 @@ function inputClass(invalid: boolean) {
 export default function SearchForm({
   onSearch,
   isLoading,
+  initialValues,
 }: {
   onSearch: (values: SearchValues) => void;
   isLoading: boolean;
+  initialValues?: SearchValues;
 }) {
-  const [errors, setErrors] = useState<SearchFormErrors>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [errors, setErrors] = useState<SearchFormErrors>(() => initialValues ? validateSearchValues(initialValues) : {});
+  const [submitted, setSubmitted] = useState(Boolean(initialValues));
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     const form = event.currentTarget;
-    const nextErrors = validateForm(form);
+    const values = readForm(form);
+    const nextErrors = validateSearchValues(values);
     setSubmitted(true);
     setErrors(nextErrors);
     event.preventDefault();
@@ -49,17 +49,11 @@ export default function SearchForm({
       return;
     }
 
-    const data = new FormData(form);
-    onSearch({
-      destination: String(data.get("destination") ?? "").trim(),
-      checkIn: String(data.get("checkIn") ?? ""),
-      checkOut: String(data.get("checkOut") ?? ""),
-      guests: String(data.get("guests") ?? "").trim(),
-    });
+    onSearch(values);
   }
 
   function handleChange(event: ChangeEvent<HTMLFormElement>) {
-    if (submitted) setErrors(validateForm(event.currentTarget));
+    if (submitted) setErrors(validateSearchValues(readForm(event.currentTarget)));
   }
 
   return (
@@ -75,6 +69,7 @@ export default function SearchForm({
           id="destination"
           type="search"
           name="destination"
+          defaultValue={initialValues?.destination ?? ""}
           placeholder="City or neighborhood"
           required
           aria-invalid={Boolean(errors.destination)}
@@ -89,6 +84,7 @@ export default function SearchForm({
           id="checkIn"
           type="date"
           name="checkIn"
+          defaultValue={initialValues?.checkIn ?? ""}
           required
           aria-invalid={Boolean(errors.checkIn)}
           aria-describedby={errors.checkIn ? "checkIn-error" : undefined}
@@ -102,6 +98,7 @@ export default function SearchForm({
           id="checkOut"
           type="date"
           name="checkOut"
+          defaultValue={initialValues?.checkOut ?? ""}
           required
           aria-invalid={Boolean(errors.checkOut)}
           aria-describedby={errors.checkOut ? "checkOut-error" : undefined}
@@ -118,7 +115,7 @@ export default function SearchForm({
           min="1"
           max="20"
           step="1"
-          defaultValue="1"
+          defaultValue={initialValues?.guests ?? "1"}
           required
           aria-invalid={Boolean(errors.guests)}
           aria-describedby={errors.guests ? "guests-error" : undefined}

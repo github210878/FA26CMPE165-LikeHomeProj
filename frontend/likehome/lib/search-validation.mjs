@@ -54,3 +54,16 @@ export function validateSearchInputs(inputs, today = getLocalToday()) {
 
   return errors;
 }
+
+/**
+ * Shared validation for a new search and a saved search being replayed.
+ * @param {{destination: string, checkIn: string, checkOut: string, guests: string}} inputs
+ * @param {string} [today]
+ * @returns {{destination?: string, checkIn?: string, checkOut?: string, guests?: string}}
+ */
+export function validateSearchValues(inputs, today = getLocalToday()) {
+  return {
+    ...validateSearchInputs(inputs, today),
+    ...(!inputs.destination.trim() ? { destination: "Enter a destination." } : {}),
+  };
+}

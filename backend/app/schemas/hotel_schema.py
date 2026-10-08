@@ -19,6 +19,10 @@ class HotelSearchRequest(BaseModel):
         default=None,
         description="SerpApi token used to request the next page of hotel results",
     )
+    no_cache: bool = Field(
+        default=False,
+        description="Fetch fresh SerpApi results instead of using its cached response",
+    )
 
     @field_validator("check_in_date", "check_out_date")
     @classmethod

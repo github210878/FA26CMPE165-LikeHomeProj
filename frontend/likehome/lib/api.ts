@@ -25,8 +25,8 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-export function getJson<T>(path: string): Promise<T> {
-  return requestJson<T>(path);
+export function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+  return requestJson<T>(path, init);
 }
 
 export function postJson<TResponse, TRequest>(path: string, body: TRequest): Promise<TResponse> {

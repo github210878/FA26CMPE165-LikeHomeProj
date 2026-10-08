@@ -27,6 +27,34 @@ If it runs at another address, set `NEXT_PUBLIC_API_BASE_URL` in a local
 local default. Valid searches call `GET /hotels/search` and display the
 returned properties; the browser does not call SerpApi directly.
 
+### 4.7.2 Recent search replay
+
+Valid search submissions save only the destination, dates, and guest count in
+this browser's `localStorage` (`likehome_recent_searches_v1`). The five most
+recent distinct searches are kept, newest first. Repeating the same search
+moves it to the top; destination matching ignores case. Hotel results, prices,
+and property tokens are never saved in this history. Clear history removes it.
+
+The Search again button restores the form and makes a new `GET /hotels/search`
+request with `no_cache=true`. Browser response caching is also disabled. The
+backend forwards `no_cache=true` to SerpApi to request updated results instead
+of its provider cache. Each replay uses SerpApi search quota. The loading,
+empty-result, and retry states are shared with a normal search; retrying a
+replay keeps the fresh-result setting. A new search resets filters and sorting.
+Loading more results for a replay also keeps the fresh-result setting. Starting
+another search discards responses from earlier pagination requests.
+
+Saved dates are validated again at replay time. An expired stay is restored
+with inline errors so the user can correct it before a request is sent.
+Malformed history entries are ignored. If browser storage is unavailable,
+normal searches still work. Reloading the page loads history without making
+an automatic hotel request. History is local to the browser, not an account.
+
+The storage helpers in `lib/recent-searches.ts` and the `fresh` option on
+`searchHotels` can also be used by the 4.7.1 recent-search UI.
+
+### Result filters and sorting
+
 After a search, maximum nightly price and amenity filters refine only the loaded
 properties in the browser. The maximum is inclusive, uses `price_per_night` in
 USD, and accepts nonnegative decimal amounts (including zero). A blank limit

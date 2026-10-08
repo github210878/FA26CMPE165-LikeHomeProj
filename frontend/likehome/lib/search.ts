@@ -8,14 +8,22 @@ export type SearchValues = {
   guests: string;
 };
 
-export function hotelSearchParams(values: SearchValues, nextPageToken?: string | null): URLSearchParams {
+export type SearchOptions = {
+  fresh?: boolean;
+  nextPageToken?: string | null;
+};
+
+export function hotelSearchParams(values: SearchValues, options: SearchOptions | string | null = {}): URLSearchParams {
+  // Preserve existing callers that pass a pagination token as the second argument.
+  const resolvedOptions: SearchOptions = typeof options === "string" ? { nextPageToken: options } : options ?? {};
   const params = new URLSearchParams({
     q: values.destination.trim(),
     check_in_date: values.checkIn,
     check_out_date: values.checkOut,
     adults: String(Number(values.guests)),
   });
-  if (nextPageToken) params.set("next_page_token", nextPageToken);
+  if (resolvedOptions.nextPageToken) params.set("next_page_token", resolvedOptions.nextPageToken);
+  if (resolvedOptions.fresh) params.set("no_cache", "true");
   return params;
 }
 
@@ -58,7 +66,9 @@ function parseHotelSearchResponse(value: unknown): HotelSearchResponse {
   return value as HotelSearchResponse;
 }
 
-export async function searchHotels(values: SearchValues, nextPageToken?: string | null): Promise<HotelSearchResponse> {
-  const response = await getJson<unknown>(`/hotels/search?${hotelSearchParams(values, nextPageToken)}`);
+export async function searchHotels(values: SearchValues, options: SearchOptions | string | null = {}): Promise<HotelSearchResponse> {
+  const response = await getJson<unknown>(`/hotels/search?${hotelSearchParams(values, options)}`, {
+    cache: "no-store",
+  });
   return parseHotelSearchResponse(response);
 }
