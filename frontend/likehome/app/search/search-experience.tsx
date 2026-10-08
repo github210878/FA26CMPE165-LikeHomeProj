@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import HotelResultCard from "@/components/HotelResultCard";
 import HotelFilters from "@/components/HotelFilters";
-import { ApiError } from "@/lib/api";
+import ErrorState from "@/components/ErrorState";
+import { searchError, type SearchError } from "@/lib/search-error";
 import type { HotelSearchResponse } from "@/lib/api-types";
 import { searchHotels, type SearchValues } from "@/lib/search";
 import { checkoutHref } from "@/lib/checkout-selection";
@@ -15,12 +16,14 @@ type SearchStatus = "idle" | "loading" | "error" | "success";
 
 export default function SearchExperience() {
   const [status, setStatus] = useState<SearchStatus>("idle");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [error, setError] = useState<SearchError | null>(null);
   const [results, setResults] = useState<HotelSearchResponse | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
   const [filters, setFilters] = useState<HotelFilterValues>({ maxPrice: "", amenities: [] });
   const [sort, setSort] = useState<HotelSort>("recommended");
   const requestId = useRef(0);
+  const pending = useRef(false);
+  const lastSearch = useRef<SearchValues | null>(null);
   const filteredHotels = results ? filterHotels(results.properties, filters) : [];
   const displayedHotels = sortHotels(filteredHotels, sort);
   const amenityOptions = results ? getAmenityOptions(results.properties) : [];
@@ -29,12 +32,15 @@ export default function SearchExperience() {
     setFilters({ maxPrice: "", amenities: [] });
   }
 
-  async function handleSearch(values: SearchValues) {
+  async function handleSearch(values: SearchValues, retry = false) {
+    if (pending.current) return;
+    pending.current = true;
+    lastSearch.current = { ...values };
     const currentRequest = ++requestId.current;
     setStatus("loading");
     setResults(null);
     setSelectedSearch(null);
-    setErrorMessage("");
+    if (!retry) setError(null);
     clearFilters();
     setSort("recommended");
 
@@ -43,19 +49,20 @@ export default function SearchExperience() {
       if (currentRequest !== requestId.current) return;
       setResults(response);
       setSelectedSearch(values);
+      setError(null);
       setStatus("success");
     } catch (error) {
       if (currentRequest !== requestId.current) return;
-      if (error instanceof ApiError && error.status === 422) {
-        setErrorMessage("The search details were not accepted. Please check the destination, dates, and guest count.");
-      } else if (error instanceof ApiError && (error.status === 502 || error.status === 504)) {
-        setErrorMessage("The hotel search provider is unavailable right now. Please try again later.");
-      } else if (error instanceof TypeError) {
-        setErrorMessage("Cannot reach the hotel search service. Please try again later.");
-      } else {
-        setErrorMessage("Hotel search is unavailable right now. Please try again later.");
-      }
+      setError(searchError(error));
       setStatus("error");
+    } finally {
+      pending.current = false;
+    }
+  }
+
+  function retrySearch() {
+    if (error?.retryable && lastSearch.current) {
+      void handleSearch(lastSearch.current, true);
     }
   }
 
@@ -67,7 +74,16 @@ export default function SearchExperience() {
         <h2 className="text-xl font-semibold text-slate-950">Available stays</h2>
         {status === "idle" && <p className="mt-2 text-sm leading-6 text-slate-600">Enter a destination and dates to find available stays.</p>}
         {status === "loading" && <p className="mt-2 text-sm leading-6 text-slate-600">Searching for stays…</p>}
-        {status === "error" && <p role="alert" className="mt-2 text-sm leading-6 text-red-700">{errorMessage}</p>}
+        {error && (
+          <div className="mt-4">
+            <ErrorState
+              title={error.title}
+              message={error.message}
+              onRetry={error.retryable ? retrySearch : undefined}
+              isRetrying={status === "loading"}
+            />
+          </div>
+        )}
         {status === "success" && results?.properties.length === 0 && (
           <p className="mt-2 text-sm leading-6 text-slate-600">No hotels found for this search. Try a different destination or dates.</p>
         )}

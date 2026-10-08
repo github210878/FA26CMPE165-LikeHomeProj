@@ -11,6 +11,7 @@ import { filterHotels, getAmenityOptions, parseMaxPrice } from "../lib/hotel-fil
 import { getHotelThumbnailUrl } from "../lib/hotel-thumbnail.ts";
 import { HOTEL_SORT_OPTIONS, sortHotels } from "../lib/hotel-sort.ts";
 import { searchHotels } from "../lib/search.ts";
+import { searchError } from "../lib/search-error.ts";
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -100,6 +101,10 @@ function loadComponent(path, imports) {
 const HotelFilters = loadComponent("../components/HotelFilters.tsx", {
   "@/lib/hotel-filters": { parseMaxPrice },
 });
+const RetryButton = loadComponent("../components/RetryButton.tsx", {});
+const ErrorState = loadComponent("../components/ErrorState.tsx", {
+  "./RetryButton": { default: RetryButton },
+});
 
 function searchHarness() {
   const slots = [];
@@ -124,6 +129,8 @@ function searchHarness() {
     react: hooks,
     "@/components/HotelResultCard": { default: HotelResultCard },
     "@/components/HotelFilters": { default: HotelFilters },
+    "@/components/ErrorState": { default: ErrorState },
+    "@/lib/search-error": { searchError },
     "@/lib/api": { ApiError },
     "@/lib/search": { searchHotels },
     "@/lib/checkout-selection": { checkoutHref },
@@ -143,6 +150,8 @@ function searchHarness() {
         if (!node || typeof node !== "object") return;
         nodes.push(node);
         if (node.type === HotelFilters) visit(HotelFilters(node.props));
+        else if (node.type === ErrorState) visit(ErrorState(node.props));
+        else if (node.type === RetryButton) visit(RetryButton(node.props));
         else visit(node.props?.children);
       }
       visit(tree);
@@ -151,6 +160,7 @@ function searchHarness() {
         html: renderToStaticMarkup(tree),
         cards: nodes.filter((node) => node.type === HotelResultCard),
         form: nodes.find((node) => node.type === SearchForm),
+        retry: nodes.find((node) => node.type === RetryButton),
         price: nodes.find((node) => node.props?.id === "hotel-max-price"),
         sort: nodes.find((node) => node.props?.id === "hotel-sort"),
         checkbox: (value) => nodes.find((node) => node.type === "input" && node.props.value === value),
@@ -161,6 +171,53 @@ function searchHarness() {
 }
 
 const search = { destination: " San Jose hotels ", checkIn: "2026-11-01", checkOut: "2026-11-03", guests: "3" };
+
+test("retry repeats the failed search once, stays disabled while pending, and clears on success", async () => {
+  const calls = [];
+  let resolveRetry;
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+    if (calls.length === 1) return new Response(null, { status: 504 });
+    return new Promise((resolve) => { resolveRetry = resolve; });
+  };
+  const harness = searchHarness();
+  await harness.render().form.props.onSearch(search);
+  let view = harness.render();
+  assert.match(view.html, /The search took too long/);
+  assert.match(view.html, /role="alert"/);
+  view.retry.props.onRetry();
+  view.retry.props.onRetry();
+  view = harness.render();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], calls[1]);
+  assert.equal(view.retry.props.isRetrying, true);
+  assert.match(view.html, /disabled="" aria-busy="true"/);
+  assert.match(view.html, /Trying again/);
+  resolveRetry(new Response(JSON.stringify({
+    search_query: "San Jose hotels", check_in_date: search.checkIn,
+    check_out_date: search.checkOut, result_count: 0, properties: [],
+  })));
+  await new Promise(setImmediate);
+  view = harness.render();
+  assert.equal(view.retry, undefined);
+  assert.match(view.html, /No hotels found/);
+  assert.doesNotMatch(view.html, /role="alert"/);
+});
+
+test("failed retries remain available and validation errors require a corrected search", async () => {
+  let status = 502;
+  globalThis.fetch = async () => new Response(null, { status });
+  const harness = searchHarness();
+  await harness.render().form.props.onSearch(search);
+  harness.render().retry.props.onRetry();
+  await new Promise(setImmediate);
+  assert.equal(harness.render().retry.props.isRetrying, false);
+  status = 422;
+  await harness.render().form.props.onSearch({ ...search, destination: "New York" });
+  const view = harness.render();
+  assert.equal(view.retry, undefined);
+  assert.match(view.html, /Check your search details/);
+});
 
 test("price, amenity, combination, clear, count and empty UI update locally with no extra HTTP requests", async () => {
   const payload = {
