@@ -169,6 +169,17 @@ def _optional_text(value: object) -> str | None:
     return value.strip() or None
 
 
+def _next_page_token(response: object) -> str | None:
+    """Read pagination tokens from both current and SerpApi response shapes."""
+    if not isinstance(response, dict):
+        return None
+    direct = _optional_text(response.get("next_page_token"))
+    if direct:
+        return direct
+    pagination = response.get("serpapi_pagination")
+    return _optional_text(pagination.get("next_page_token")) if isinstance(pagination, dict) else None
+
+
 def _finite_number(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -287,7 +298,7 @@ def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchRe
         check_out_date=search_info.check_out_date,
         result_count=len(properties),
         properties=properties,
-        next_page_token=_optional_text(raw_response.get("next_page_token")),
+        next_page_token=_next_page_token(raw_response),
     )
 
 

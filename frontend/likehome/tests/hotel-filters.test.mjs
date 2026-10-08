@@ -204,6 +204,32 @@ test("retry repeats the failed search once, stays disabled while pending, and cl
   assert.doesNotMatch(view.html, /role="alert"/);
 });
 
+test("load more appends the next page and keeps the pagination token out of card data", async () => {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+    const page = calls.length === 1
+      ? { search_query: "San Jose hotels", check_in_date: search.checkIn, check_out_date: search.checkOut, result_count: 1, properties: [hotels[0]], next_page_token: "next-page-token" }
+      : { search_query: "San Jose hotels", check_in_date: search.checkIn, check_out_date: search.checkOut, result_count: 1, properties: [hotels[1]], next_page_token: null };
+    return new Response(JSON.stringify(page));
+  };
+
+  const harness = searchHarness();
+  await harness.render().form.props.onSearch(search);
+  let view = harness.render();
+  let loadMore = view.nodes.find((node) => node.type === "button" && node.props.children === "Load more stays");
+  assert.ok(loadMore);
+  loadMore.props.onClick();
+  await new Promise(setImmediate);
+
+  view = harness.render();
+  assert.equal(calls.length, 2);
+  assert.match(calls[1], /next_page_token=next-page-token/);
+  assert.deepEqual(names(view.cards.map((card) => card.props.hotel)), ["Budget", "Pool stay"]);
+  assert.match(view.html, /2 of 2 loaded stays/);
+  assert.equal(view.nodes.find((node) => node.type === "button" && node.props.children === "Load more stays"), undefined);
+});
+
 test("failed retries remain available and validation errors require a corrected search", async () => {
   let status = 502;
   globalThis.fetch = async () => new Response(null, { status });

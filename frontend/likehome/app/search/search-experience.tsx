@@ -19,6 +19,8 @@ export default function SearchExperience() {
   const [error, setError] = useState<SearchError | null>(null);
   const [results, setResults] = useState<HotelSearchResponse | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [pageError, setPageError] = useState<SearchError | null>(null);
   const [filters, setFilters] = useState<HotelFilterValues>({ maxPrice: "", amenities: [] });
   const [sort, setSort] = useState<HotelSort>("recommended");
   const requestId = useRef(0);
@@ -40,6 +42,8 @@ export default function SearchExperience() {
     setStatus("loading");
     setResults(null);
     setSelectedSearch(null);
+    setIsLoadingMore(false);
+    setPageError(null);
     if (!retry) setError(null);
     clearFilters();
     setSort("recommended");
@@ -57,6 +61,25 @@ export default function SearchExperience() {
       setStatus("error");
     } finally {
       pending.current = false;
+    }
+  }
+
+  async function loadNextPage() {
+    if (isLoadingMore || !selectedSearch || !results?.next_page_token) return;
+    setIsLoadingMore(true);
+    setPageError(null);
+    try {
+      const nextPage = await searchHotels(selectedSearch, results.next_page_token);
+      setResults((current) => current ? {
+        ...current,
+        result_count: current.result_count + nextPage.result_count,
+        properties: [...current.properties, ...nextPage.properties],
+        next_page_token: nextPage.next_page_token,
+      } : current);
+    } catch (loadError) {
+      setPageError(searchError(loadError));
+    } finally {
+      setIsLoadingMore(false);
     }
   }
 
@@ -113,12 +136,38 @@ export default function SearchExperience() {
               </div>
             )}
             <ul className="mt-6 grid gap-4 md:grid-cols-2">
-              {displayedHotels.map((hotel) => (
-                <li key={hotel.property_token ?? `${hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}`} className="min-w-0">
+              {displayedHotels.map((hotel, displayIndex) => (
+                <li
+                  key={`${hotel.property_token ?? hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}-${displayIndex}`}
+                  className="min-w-0"
+                >
                   <HotelResultCard hotel={hotel} checkoutHref={selectedSearch ? checkoutHref(selectedSearch, hotel) : null} />
                 </li>
               ))}
             </ul>
+            {pageError && (
+              <div className="mt-6">
+                <ErrorState
+                  title={pageError.title}
+                  message={pageError.message}
+                  onRetry={pageError.retryable ? loadNextPage : undefined}
+                  isRetrying={isLoadingMore}
+                />
+              </div>
+            )}
+            {results.next_page_token && !pageError && (
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => void loadNextPage()}
+                  disabled={isLoadingMore}
+                  aria-busy={isLoadingMore}
+                  className="min-h-11 rounded-md border border-teal-700 px-5 font-medium text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoadingMore ? "Loading more stays…" : "Load more stays"}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

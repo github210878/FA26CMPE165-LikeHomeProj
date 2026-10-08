@@ -8,13 +8,15 @@ export type SearchValues = {
   guests: string;
 };
 
-export function hotelSearchParams(values: SearchValues): URLSearchParams {
-  return new URLSearchParams({
+export function hotelSearchParams(values: SearchValues, nextPageToken?: string | null): URLSearchParams {
+  const params = new URLSearchParams({
     q: values.destination.trim(),
     check_in_date: values.checkIn,
     check_out_date: values.checkOut,
     adults: String(Number(values.guests)),
   });
+  if (nextPageToken) params.set("next_page_token", nextPageToken);
+  return params;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -48,14 +50,15 @@ function parseHotelSearchResponse(value: unknown): HotelSearchResponse {
     !Number.isInteger(value.result_count) ||
     value.result_count < 0 ||
     !Array.isArray(value.properties) ||
-    !value.properties.every(isHotelSearchResult)) {
+    !value.properties.every(isHotelSearchResult) ||
+    (value.next_page_token !== undefined && value.next_page_token !== null && typeof value.next_page_token !== "string")) {
     throw new Error("Hotel search returned an unexpected response");
   }
 
   return value as HotelSearchResponse;
 }
 
-export async function searchHotels(values: SearchValues): Promise<HotelSearchResponse> {
-  const response = await getJson<unknown>(`/hotels/search?${hotelSearchParams(values)}`);
+export async function searchHotels(values: SearchValues, nextPageToken?: string | null): Promise<HotelSearchResponse> {
+  const response = await getJson<unknown>(`/hotels/search?${hotelSearchParams(values, nextPageToken)}`);
   return parseHotelSearchResponse(response);
 }
