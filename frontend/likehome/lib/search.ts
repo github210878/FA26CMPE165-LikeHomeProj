@@ -8,13 +8,17 @@ export type SearchValues = {
   guests: string;
 };
 
-export function hotelSearchParams(values: SearchValues): URLSearchParams {
-  return new URLSearchParams({
+export type SearchOptions = { fresh?: boolean };
+
+export function hotelSearchParams(values: SearchValues, options: SearchOptions = {}): URLSearchParams {
+  const params = new URLSearchParams({
     q: values.destination.trim(),
     check_in_date: values.checkIn,
     check_out_date: values.checkOut,
     adults: String(Number(values.guests)),
   });
+  if (options.fresh) params.set("no_cache", "true");
+  return params;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -55,7 +59,9 @@ function parseHotelSearchResponse(value: unknown): HotelSearchResponse {
   return value as HotelSearchResponse;
 }
 
-export async function searchHotels(values: SearchValues): Promise<HotelSearchResponse> {
-  const response = await getJson<unknown>(`/hotels/search?${hotelSearchParams(values)}`);
+export async function searchHotels(values: SearchValues, options: SearchOptions = {}): Promise<HotelSearchResponse> {
+  const response = await getJson<unknown>(`/hotels/search?${hotelSearchParams(values, options)}`, {
+    cache: "no-store",
+  });
   return parseHotelSearchResponse(response);
 }

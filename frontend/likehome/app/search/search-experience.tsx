@@ -6,11 +6,14 @@ import HotelFilters from "@/components/HotelFilters";
 import ErrorState from "@/components/ErrorState";
 import { searchError, type SearchError } from "@/lib/search-error";
 import type { HotelSearchResponse } from "@/lib/api-types";
-import { searchHotels, type SearchValues } from "@/lib/search";
+import { searchHotels, type SearchOptions, type SearchValues } from "@/lib/search";
+import { rememberRecentSearch } from "@/lib/recent-searches";
+import { validateSearchValues } from "@/lib/search-validation.mjs";
 import { checkoutHref } from "@/lib/checkout-selection";
 import { filterHotels, getAmenityOptions, type HotelFilterValues } from "@/lib/hotel-filters";
 import { HOTEL_SORT_OPTIONS, sortHotels, type HotelSort } from "@/lib/hotel-sort";
 import SearchForm from "./search-form";
+import RecentSearches from "./recent-searches";
 
 type SearchStatus = "idle" | "loading" | "error" | "success";
 
@@ -21,9 +24,11 @@ export default function SearchExperience() {
   const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
   const [filters, setFilters] = useState<HotelFilterValues>({ maxPrice: "", amenities: [] });
   const [sort, setSort] = useState<HotelSort>("recommended");
+  const [restoredSearch, setRestoredSearch] = useState<{ values: SearchValues; version: number } | null>(null);
   const requestId = useRef(0);
   const pending = useRef(false);
-  const lastSearch = useRef<SearchValues | null>(null);
+  const needsFreshSearch = useRef(false);
+  const lastSearch = useRef<{ values: SearchValues; fresh: boolean } | null>(null);
   const filteredHotels = results ? filterHotels(results.properties, filters) : [];
   const displayedHotels = sortHotels(filteredHotels, sort);
   const amenityOptions = results ? getAmenityOptions(results.properties) : [];
@@ -32,10 +37,11 @@ export default function SearchExperience() {
     setFilters({ maxPrice: "", amenities: [] });
   }
 
-  async function handleSearch(values: SearchValues, retry = false) {
+  async function handleSearch(values: SearchValues, { retry = false, fresh = false }: SearchOptions & { retry?: boolean } = {}) {
     if (pending.current) return;
     pending.current = true;
-    lastSearch.current = { ...values };
+    lastSearch.current = { values: { ...values }, fresh };
+    rememberRecentSearch(values);
     const currentRequest = ++requestId.current;
     setStatus("loading");
     setResults(null);
@@ -45,7 +51,7 @@ export default function SearchExperience() {
     setSort("recommended");
 
     try {
-      const response = await searchHotels(values);
+      const response = await searchHotels(values, { fresh });
       if (currentRequest !== requestId.current) return;
       setResults(response);
       setSelectedSearch(values);
@@ -62,13 +68,44 @@ export default function SearchExperience() {
 
   function retrySearch() {
     if (error?.retryable && lastSearch.current) {
-      void handleSearch(lastSearch.current, true);
+      void handleSearch(lastSearch.current.values, { retry: true, fresh: lastSearch.current.fresh });
     }
+  }
+
+  function submitSearch(values: SearchValues) {
+    if (pending.current) return;
+    const fresh = needsFreshSearch.current;
+    needsFreshSearch.current = false;
+    void handleSearch(values, { fresh });
+  }
+
+  function replaySearch(values: SearchValues) {
+    if (pending.current) return;
+    const hasErrors = Object.keys(validateSearchValues(values)).length > 0;
+    needsFreshSearch.current = hasErrors;
+    setRestoredSearch((previous) => ({ values, version: (previous?.version ?? 0) + 1 }));
+    if (hasErrors) {
+      setStatus("idle");
+      setResults(null);
+      setSelectedSearch(null);
+      setError(null);
+      lastSearch.current = null;
+      clearFilters();
+      setSort("recommended");
+      return;
+    }
+    void handleSearch(values, { fresh: true });
   }
 
   return (
     <>
-      <SearchForm onSearch={handleSearch} isLoading={status === "loading"} />
+      <SearchForm
+        key={restoredSearch?.version ?? 0}
+        initialValues={restoredSearch?.values}
+        onSearch={submitSearch}
+        isLoading={status === "loading"}
+      />
+      <RecentSearches onReplay={replaySearch} isLoading={status === "loading"} />
 
       <div className="mt-12 border-t border-slate-200 pt-8" aria-live="polite">
         <h2 className="text-xl font-semibold text-slate-950">Available stays</h2>
