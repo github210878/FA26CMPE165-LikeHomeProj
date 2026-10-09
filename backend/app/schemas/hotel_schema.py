@@ -23,6 +23,12 @@ class HotelSearchRequest(BaseModel):
         default=False,
         description="Fetch fresh SerpApi results instead of using its cached response",
     )
+    sort_by: Literal[
+        "recommended",
+        "price_low_to_high",
+        "price_high_to_low",
+        "rating_high_to_low",
+    ] = "recommended"
 
     @field_validator("check_in_date", "check_out_date")
     @classmethod
