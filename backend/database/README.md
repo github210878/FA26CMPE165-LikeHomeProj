@@ -3,8 +3,11 @@
 Increment 3B.1 supplies schema and mappings. Increment 3B.2A adds revision-aware
 quotes, canonical money, Pay/cancellation revision increments and read-only
 receipt recognition. Nothing applies migrations at startup. No final change
-confirmation, quote consumption, adjustment settlement or cancellation ledger
-reconciliation is implemented. ORM `create_all` does not migrate tables.
+endpoint is registered. Increment 3B.2B adds the atomic confirmation service,
+event consumption and primary charge/credit persistence. Adjustment settlement
+and cancellation ledger reconciliation remain deferred. ORM `create_all` does
+not migrate tables. Migration 004 remains a manual prerequisite and must not be
+applied to development MySQL by this increment.
 
 ## Schema and cancellation reconciliation
 
@@ -34,10 +37,47 @@ it is NEVER valid authorization for new writes. Normal confirmation and provider
 request schemas still reject past dates. The signature decoder likewise is only
 structural verification: new applications require full quote time/state checks.
 
-Increment 3B.2B must recheck consumption under mutation locks in a fresh
-transaction, repeat overlap checks, revalidate provider pricing and atomically
-persist the event/revision/financial result. The current ordinary receipt lookup
-does not resolve concurrent consumption or guarantee a fresh InnoDB snapshot.
+## Atomic confirmation service (unregistered)
+
+`reservation_change_service.confirm_reservation_change` accepts the existing
+confirmation input and authenticated customer ID using a dedicated request
+Session. It verifies active ownership and returns an exact committed receipt
+before spending provider quota. New uses verify format-2 signature, revision,
+fingerprint, signed reconfirmed destination/occupancy and price acknowledgements.
+Historical receipt inputs must pass normal future-date validation before any new
+application. No client hotel identity or financial value determines settlement.
+
+One fresh trusted provider request runs before mutation locks. The service ends
+the earlier read transaction, then locks User, Reservation, Payments ordered by
+ID, and Adjustments ordered by ID. It refreshes authoritative state and repeats
+receipt, eligibility, revision, fingerprint, property, expiry, acceptance and
+overlap checks. Creation uses the same User serialization point; Pay/cancellation
+serialize on the Reservation. Normal receipt lookup alone provides no such
+concurrency guarantee.
+
+Date/total/rate-association changes, one revision increment, event history and
+any adjustment commit once in the same transaction. Rate records are reused or
+created for the same Hotel using creation's rate-record convention; shared
+RoomType prices are never modified. Pending booking payments are revised in
+place. Paid booking payments remain untouched: increases add pending internal
+charges, decreases add recorded reservation-specific credits, and zero differences
+add no adjustment. All successful date changes add an event, including zero-price
+changes. Later obligations come from the latest committed event. Earlier pending
+or failed charges block new changes; credits are never silently netted against
+them. Receipt and financial JSON amounts use fixed cent strings.
+
+Event JTI and reservation/revision uniqueness are the final duplicate defenses.
+After an identified event uniqueness failure, all candidate writes roll back;
+only a matching committed token/request receipt permits a successful retry.
+Unrelated integrity errors fail without being interpreted as successful retries.
+Any other validation, deadlock or transaction failure also rolls back all writes.
+
+The service is deliberately absent from the router: existing payment/cancellation
+flows cannot settle or reconcile these new adjustments yet. Increment 3B.3 must
+finish those approved financial policies before enabling customer confirmation.
+Existing public booking APIs remain unchanged. Tests use mocked providers and
+isolated SQLite; threaded tests simulate User-row waits with a Python mutex around
+real Sessions. No real MySQL/InnoDB concurrency verification has occurred.
 
 Two small additions keep reconciliation within the adjustment table:
 
@@ -55,7 +95,7 @@ debit. Reconciliation entries use `recorded` status and cannot be collected as
 new pending payments. These are internal records, not bank refunds or spendable
 funds. Schema support does not calculate amounts or perform any reconciliation.
 
-MySQL 5.7 CHECK enforcement is not used. The unused persistence input schema
+MySQL 5.7 CHECK enforcement is not used. The persistence input schema
 `ReservationChangeAdjustmentRecord` validates positive, finite cent amounts,
 categories, statuses and required parent references. Future writers MUST also
 lock and validate the parent is a primary entry, belongs to this change, has the
@@ -68,8 +108,9 @@ must follow the approved reconciliation rules. Multiple staged reconciliation
 entries would require a separately approved schema expansion and are not needed
 by the approved cancellation policy described here.
 
-Future event writers must also verify the event's user, booking payment and old/
-new room associations against the locked owned reservation. The FKs establish
+The confirmation service derives the event's user, booking payment and old/new
+room associations from the locked owned reservation. Future writers must retain
+these guards. The FKs establish
 that records exist, not that a supplied payment belongs to the supplied stay.
 
 ## Money and UTC

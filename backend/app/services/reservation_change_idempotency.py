@@ -1,9 +1,9 @@
 """Read-only persisted receipt recognition, not reservation-change confirmation.
 
 An exact committed receipt can outlive its quote and original reservation state.
-Missing receipts do NOT authorize applying a quote. Increment 3B.2B must repeat
-this lookup under reservation locks and run fresh time/state/provider validation
-before any mutation. No records are inserted, updated, flushed or committed here.
+Missing receipts do NOT authorize applying a quote. The confirmation service
+repeats this lookup under reservation locks and runs fresh time/state/provider
+validation before mutation. Nothing is inserted, updated, flushed or committed here.
 """
 
 import hashlib

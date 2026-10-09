@@ -1,4 +1,4 @@
-"""Append-only committed change receipts; no quote consumption operation yet.
+"""Append-only committed change receipts, inserted by atomic confirmation.
 
 DATETIME values represent UTC without an offset in MySQL. Future callers must
 normalize quote timestamps to UTC before removing tzinfo. JSON money snapshots

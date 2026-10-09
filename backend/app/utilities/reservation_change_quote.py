@@ -1,8 +1,8 @@
 """Signed review artifacts, with a separate purpose/key from access tokens.
 
-Verification is read-only and does not consume a quote. Increment 3 must reload
-state and repeat verification/overlap checks under the mutation locks, then
-freshly revalidate pricing before committing. Format 2 binds a persisted revision
+Verification is read-only and does not consume a quote. Confirmation revalidates
+provider pricing before locks, then reloads state and repeats verification/overlap
+checks under mutation locks before committing. Format 2 binds a persisted revision
 as well as the related-state fingerprint; neither consumes a quote by itself.
 """
 

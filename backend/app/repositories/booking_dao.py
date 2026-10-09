@@ -8,6 +8,7 @@ from app.models.hotel import Hotel
 from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.reservation_change_event import ReservationChangeEvent
+from app.models.reservation_change_adjustment import ReservationChangeAdjustment
 from app.models.room_type import RoomType
 from app.models.user import User
 
@@ -283,6 +284,7 @@ def get_owned_reservation_for_change(db: Session, reservation_id: int, user_id: 
         .outerjoin(RoomType, Reservation.room_type_id == RoomType.room_type_id)
         .outerjoin(Hotel, RoomType.hotel_id == Hotel.hotel_id)
         .filter(Reservation.reservation_id == reservation_id, Reservation.user_id == user_id)
+        .populate_existing()
         .first()
     )
     if records is None:
@@ -291,10 +293,62 @@ def get_owned_reservation_for_change(db: Session, reservation_id: int, user_id: 
         db.query(Payment)
         .filter(Payment.reservation_id == reservation_id)
         .order_by(Payment.payment_id)
+        .populate_existing()
         .all()
     )
     reservation, room_type, hotel = records
     return reservation, room_type, hotel, payments
+
+
+def is_active_booking_user(db: Session, user_id: int) -> bool:
+    return db.execute(
+        select(User.user_id).where(User.user_id == user_id, User.status == "active")
+    ).scalar_one_or_none() is not None
+
+
+def lock_reservation_for_change(db: Session, reservation_id: int, user_id: int):
+    """Refresh the authoritative stay after the caller locks its User row."""
+    return (
+        db.query(Reservation)
+        .filter(Reservation.reservation_id == reservation_id, Reservation.user_id == user_id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+
+
+def lock_payments_for_change(db: Session, reservation_id: int):
+    return (
+        db.query(Payment)
+        .filter(Payment.reservation_id == reservation_id)
+        .order_by(Payment.payment_id)
+        .populate_existing()
+        .with_for_update()
+        .all()
+    )
+
+
+def get_adjustments_for_change(db: Session, reservation_id: int, *, lock: bool = False):
+    change_ids = select(ReservationChangeEvent.change_id).where(
+        ReservationChangeEvent.reservation_id == reservation_id,
+    )
+    query = (
+        db.query(ReservationChangeAdjustment)
+        .filter(ReservationChangeAdjustment.change_id.in_(change_ids))
+        .order_by(ReservationChangeAdjustment.adjustment_id)
+        .populate_existing()
+    )
+    return (query.with_for_update() if lock else query).all()
+
+
+def get_latest_reservation_change(db: Session, reservation_id: int):
+    return (
+        db.query(ReservationChangeEvent)
+        .filter(ReservationChangeEvent.reservation_id == reservation_id)
+        .order_by(ReservationChangeEvent.revision_after.desc())
+        .populate_existing()
+        .first()
+    )
 
 
 def get_reservation_for_cancellation(db: Session, reservation_id: int, user_id: int):
