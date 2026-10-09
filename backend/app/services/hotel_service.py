@@ -254,6 +254,45 @@ def _to_hotel_result(raw_property: dict) -> HotelSearchResult:
         gps_coordinates=coordinates if isinstance(coordinates, dict) else None,
     )
 
+def _sort_hotels(
+    properties: list[HotelSearchResult],
+    sort_by: str,
+) -> list[HotelSearchResult]:
+    """Sort hotels while preserving original order for equal values."""
+
+    if sort_by == "recommended":
+        return properties
+
+    if sort_by == "price_low_to_high":
+        return sorted(
+            properties,
+            key=lambda hotel: (
+                hotel.price_per_night is None,
+                hotel.price_per_night
+                if hotel.price_per_night is not None else 0,
+            ),
+        )
+
+    if sort_by == "price_high_to_low":
+        return sorted(
+            properties,
+            key=lambda hotel: (
+                hotel.price_per_night is None,
+                -hotel.price_per_night
+                if hotel.price_per_night is not None else 0,
+            ),
+        )
+
+    if sort_by == "rating_high_to_low":
+        return sorted(
+            properties,
+            key=lambda hotel: (
+                hotel.rating is None,
+                -hotel.rating if hotel.rating is not None else 0,
+            ),
+        )
+
+    return properties
 
 def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchResponse:
     params = _build_serpapi_params(search_info)
@@ -285,6 +324,10 @@ def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchRe
     properties = [
         _to_hotel_result(item) for item in raw_properties if isinstance(item, dict)
     ]
+
+    # Sort hotel results based on the selected option
+    properties = _sort_hotels(properties, search_info.sort_by)
+
 
     # Cache the hotel data in the database
     try:

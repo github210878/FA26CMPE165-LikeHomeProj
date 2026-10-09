@@ -324,7 +324,6 @@ def test_nested_serpapi_next_page_token_is_returned(monkeypatch):
 
 def test_next_page_token_is_forwarded_to_serpapi(monkeypatch):
     captured = {}
-
     def fake_search(params):
         captured.update(params)
         return {"properties": []}
@@ -352,3 +351,123 @@ def test_missing_next_page_token_returns_none(monkeypatch):
     result = hotel_service.search_hotels(make_request(), db=object())
 
     assert result.next_page_token is None
+
+
+# ---------------------------------------------------------------------------
+# Sprint 3 - Hotel sorting
+# ---------------------------------------------------------------------------
+
+def test_recommended_preserves_original_order():
+    hotels = [
+        hotel_service.HotelSearchResult(name="Hotel C", price_per_night=300),
+        hotel_service.HotelSearchResult(name="Hotel A", price_per_night=100),
+        hotel_service.HotelSearchResult(name="Hotel B", price_per_night=200),
+    ]
+
+    result = hotel_service._sort_hotels(hotels, "recommended")
+
+    assert [h.name for h in result] == ["Hotel C", "Hotel A", "Hotel B"]
+
+
+def test_price_low_to_high():
+    hotels = [
+        hotel_service.HotelSearchResult(name="Expensive", price_per_night=300),
+        hotel_service.HotelSearchResult(name="Cheap", price_per_night=100),
+        hotel_service.HotelSearchResult(name="Medium", price_per_night=200),
+    ]
+
+    result = hotel_service._sort_hotels(hotels, "price_low_to_high")
+
+    assert [h.name for h in result] == ["Cheap", "Medium", "Expensive"]
+
+
+def test_price_high_to_low():
+    hotels = [
+        hotel_service.HotelSearchResult(name="Cheap", price_per_night=100),
+        hotel_service.HotelSearchResult(name="Expensive", price_per_night=300),
+        hotel_service.HotelSearchResult(name="Medium", price_per_night=200),
+    ]
+
+    result = hotel_service._sort_hotels(hotels, "price_high_to_low")
+
+    assert [h.name for h in result] == ["Expensive", "Medium", "Cheap"]
+
+
+def test_rating_high_to_low():
+    hotels = [
+        hotel_service.HotelSearchResult(name="Hotel A", rating=3.5),
+        hotel_service.HotelSearchResult(name="Hotel B", rating=4.9),
+        hotel_service.HotelSearchResult(name="Hotel C", rating=4.2),
+    ]
+
+    result = hotel_service._sort_hotels(hotels, "rating_high_to_low")
+
+    assert [h.name for h in result] == ["Hotel B", "Hotel C", "Hotel A"]
+
+
+def test_missing_prices_are_last():
+    hotels = [
+        hotel_service.HotelSearchResult(name="No Price"),
+        hotel_service.HotelSearchResult(name="Hotel A", price_per_night=150),
+        hotel_service.HotelSearchResult(name="Hotel B", price_per_night=100),
+    ]
+
+    result = hotel_service._sort_hotels(hotels, "price_low_to_high")
+
+    assert [h.name for h in result] == ["Hotel B", "Hotel A", "No Price"]
+
+
+def test_equal_prices_preserve_original_order():
+    hotels = [
+        hotel_service.HotelSearchResult(name="Hotel A", price_per_night=150),
+        hotel_service.HotelSearchResult(name="Hotel B", price_per_night=150),
+        hotel_service.HotelSearchResult(name="Hotel C", price_per_night=100),
+    ]
+
+    result = hotel_service._sort_hotels(hotels, "price_low_to_high")
+
+    assert [h.name for h in result] == ["Hotel C", "Hotel A", "Hotel B"]
+
+
+
+def test_search_request_accepts_supported_sort_options():
+    for option in (
+        "recommended",
+        "price_low_to_high",
+        "price_high_to_low",
+        "rating_high_to_low",
+    ):
+        request = make_request(sort_by=option)
+        assert request.sort_by == option
+
+
+def test_search_request_rejects_invalid_sort_option():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        make_request(sort_by="random")
+
+
+def test_search_applies_sort_to_mapped_results(monkeypatch):
+    properties = [
+        {"name": "Expensive", "rate_per_night": {"extracted_lowest": 300}},
+        {"name": "Cheap", "rate_per_night": {"extracted_lowest": 100}},
+        {"name": "Medium", "rate_per_night": {"extracted_lowest": 200}},
+    ]
+
+    monkeypatch.setattr(
+        hotel_service.serpapi_client,
+        "search_google_hotels",
+        lambda params: {"properties": properties},
+    )
+
+    result = hotel_service.search_hotels(
+        make_request(sort_by="price_low_to_high"),
+        db=object(),
+    )
+
+    assert [hotel.name for hotel in result.properties] == [
+        "Cheap",
+        "Medium",
+        "Expensive",
+    ]
