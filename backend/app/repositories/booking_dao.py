@@ -253,14 +253,15 @@ def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
 
 
 def check_if_user_booked_by_date_range(
-    db: Session, user_id: int, check_in_date: date, check_out_date: date
+    db: Session, user_id: int, check_in_date: date, check_out_date: date,
+    *, exclude_reservation_id: int | None = None,
 ) -> bool:
     """
     Check if the user has any booking that overlaps
     with the given check-in and check-out date range.
     """
 
-    return (
+    query = (
         db.query(Reservation)
         .filter(
             Reservation.user_id == user_id,
@@ -268,9 +269,31 @@ def check_if_user_booked_by_date_range(
             Reservation.check_in_date < check_out_date,
             Reservation.check_out_date > check_in_date,
         )
-        .first()
-        is not None
     )
+    if exclude_reservation_id is not None:
+        query = query.filter(Reservation.reservation_id != exclude_reservation_id)
+    return query.first() is not None
+
+
+def get_owned_reservation_for_change(db: Session, reservation_id: int, user_id: int):
+    """Read an owned stay and its associations without acquiring mutation locks."""
+    records = (
+        db.query(Reservation, RoomType, Hotel)
+        .outerjoin(RoomType, Reservation.room_type_id == RoomType.room_type_id)
+        .outerjoin(Hotel, RoomType.hotel_id == Hotel.hotel_id)
+        .filter(Reservation.reservation_id == reservation_id, Reservation.user_id == user_id)
+        .first()
+    )
+    if records is None:
+        return None
+    payments = (
+        db.query(Payment)
+        .filter(Payment.reservation_id == reservation_id)
+        .order_by(Payment.payment_id)
+        .all()
+    )
+    reservation, room_type, hotel = records
+    return reservation, room_type, hotel, payments
 
 
 def get_reservation_for_cancellation(db: Session, reservation_id: int, user_id: int):

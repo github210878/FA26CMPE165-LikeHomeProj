@@ -8,13 +8,25 @@ from app.schemas.booking_schema import (
     CancellationResponse,
     PaymentResponse,
 )
-from app.services import booking_service
+from app.schemas.reservation_change_schema import ReservationChangeQuoteResponse, ReservationChangeReviewRequest
+from app.services import booking_service, reservation_change_service
 from app.utilities.auth import get_current_user_id
 
 router = APIRouter(
     prefix="/bookings",
     tags=["Bookings"],
 )
+
+
+@router.post("/{reservation_id}/change-quote", response_model=ReservationChangeQuoteResponse)
+def quote_reservation_change(
+    reservation_id: int,
+    change_info: ReservationChangeReviewRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Review trusted revised pricing without changing reservation/payment records."""
+    return reservation_change_service.quote_reservation_change(db, change_info, reservation_id, user_id)
 
 
 @router.post("/create", response_model=BookingResponse)

@@ -1,8 +1,8 @@
-"""Unregistered contracts for date-only reservation changes.
+"""Contracts for reviewing date-only reservation changes.
 
-Client requests contain neither owner/property identity nor revalidation context.
-Quote acknowledgements are compared with server-held and freshly revalidated
-quotes; they never authorize a price or a payment adjustment themselves.
+Clients reconfirm destination/occupancy but cannot choose owner/property identity
+or authoritative pricing. Quote acknowledgements must be compared with a verified
+review and fresh revalidation; they never authorize a payment adjustment themselves.
 """
 
 from datetime import date, datetime
@@ -12,6 +12,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 
 from app.schemas import booking_schema
 from app.schemas.hotel_schema import HotelRevalidationResponse
+
+MAX_CHANGE_QUOTE_LENGTH = 16384
 
 
 class ReservationChangeQuoteRequest(BaseModel):
@@ -45,7 +47,7 @@ class ReservationChangeQuoteRequest(BaseModel):
 
 
 class ReservationChangeConfirmRequest(ReservationChangeQuoteRequest):
-    quote_id: str = Field(min_length=1, max_length=255)
+    quote_id: str = Field(min_length=1, max_length=MAX_CHANGE_QUOTE_LENGTH)
     accept_quote: bool = Field(strict=True)
     price_per_night: float = Field(
         gt=0, le=99999999.99, allow_inf_nan=False,
@@ -73,16 +75,12 @@ class ReservationChangeConfirmRequest(ReservationChangeQuoteRequest):
 
 
 class ReservationChangeQuoteResponse(BaseModel):
-    """Issued by a future backend quote operation, never accepted as client input.
-
-    The backend must retain the review and its authenticated owner, or securely
-    sign that binding. Quote issuance/storage and expiry duration are deferred.
-    """
+    """A signed ten-minute review; it does not finalize a reservation change."""
 
     model_config = ConfigDict(extra="forbid")
 
     reservation_id: int = Field(strict=True, gt=0)
-    quote_id: str = Field(min_length=1, max_length=255)
+    quote_id: str = Field(min_length=1, max_length=MAX_CHANGE_QUOTE_LENGTH)
     expires_at: AwareDatetime
     quote: HotelRevalidationResponse
 
@@ -111,3 +109,13 @@ class ReservationChangeRevalidationContext(BaseModel):
         if not value:
             raise ValueError("A destination is required")
         return value
+
+
+class ReservationChangeReviewRequest(
+    ReservationChangeQuoteRequest, ReservationChangeRevalidationContext,
+):
+    """Customer-reconfirmed context for the public quote-only endpoint.
+
+    These occupancy values are not verified historical occupancy. Property
+    identity still comes exclusively from the authenticated owner's reservation.
+    """
