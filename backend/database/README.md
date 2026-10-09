@@ -4,8 +4,10 @@ Increment 3B.1 supplies schema and mappings. Increment 3B.2A adds revision-aware
 quotes, canonical money, Pay/cancellation revision increments and read-only
 receipt recognition. Nothing applies migrations at startup. No final change
 endpoint is registered. Increment 3B.2B adds the atomic confirmation service,
-event consumption and primary charge/credit persistence. Adjustment settlement
-and cancellation ledger reconciliation remain deferred. ORM `create_all` does
+event consumption and primary charge/credit persistence. Increment 3B.3A adds
+internal charge settlement and financial summaries. Increment 3B.3B extends the
+existing cancellation transaction with internal ledger reconciliation and its
+financial summary. ORM `create_all` does
 not migrate tables. Migration 004 remains a manual prerequisite and must not be
 applied to development MySQL by this increment.
 
@@ -72,12 +74,111 @@ only a matching committed token/request receipt permits a successful retry.
 Unrelated integrity errors fail without being interpreted as successful retries.
 Any other validation, deadlock or transaction failure also rolls back all writes.
 
-The service is deliberately absent from the router: existing payment/cancellation
-flows cannot settle or reconcile these new adjustments yet. Increment 3B.3 must
-finish those approved financial policies before enabling customer confirmation.
+Confirmation and adjustment settlement remain absent from the router. Backend
+cancellation compatibility is now implemented; activating the full customer
+workflow and frontend integration remain separate authorized increments.
 Existing public booking APIs remain unchanged. Tests use mocked providers and
 isolated SQLite; threaded tests simulate User-row waits with a Python mutex around
 real Sessions. No real MySQL/InnoDB concurrency verification has occurred.
+
+## Internal adjustment payment and summaries (unregistered)
+
+`reservation_change_payment_service` provides owner-scoped adjustment detail,
+`settle_reservation_change_charge`, and `get_reservation_financial_summary` for
+later UI integration. The customer ID must come from existing `get_current_user_id`
+authentication; no new JWT/role contract or public route is added. Adjustment
+ownership follows Adjustment -> ChangeEvent -> Reservation -> active User, with
+both event and reservation owner checked. Missing/nonowned entries share a 404.
+
+Settlement requires explicit acceptance, a reviewed amount, and the reservation
+revision. Client values are acknowledgements only. It ends the earlier read
+transaction, then locks User -> Reservation -> Payments ascending ID -> Adjustments
+ascending ID and reloads authoritative associations, status, amount and history.
+Only primary internal charges on a confirmed reservation with a preserved paid
+booking Payment may transition pending/failed -> paid. Failed internal charges
+retry the same record; no additional Payment or adjustment is inserted. The
+charge's amount must match its committed event's tax-inclusive obligation delta,
+and its unsettled event must still be the latest change. New transitions require
+the current acknowledged revision and increment it once with UTC `settled_at` and
+`updated_at`, in one commit. Failures roll back revision/status/timestamps together.
+
+Already-paid retries with the same cent-normalized amount return the paid record
+without writing or incrementing revision, even with an older acknowledged
+revision. Future revision acknowledgements or different amounts are conflicts.
+That exception cannot authorize a new transition. The response uses the persisted
+settlement timestamp and excludes a changing current-revision field; the summary
+supplies the current revision for a subsequent review. Cancelled stays, voided
+entries, credits, reconciliation entries, or inconsistent histories are rejected.
+Completed stays cannot start a settlement, but an existing paid result is readable.
+Settlement makes zero provider requests and records no bank/card activity.
+
+Financial responses use numeric cent-normalized amounts, with Decimal arithmetic
+internally. Summaries distinguish the current reservation total, latest committed
+tax-inclusive stay obligation, original booking Payment record/status, paid,
+pending and failed additional charges, recorded reservation credits, and adjustment
+IDs/statuses. Outstanding additional amount is pending plus failed charges, with
+no credit deduction and no booking Payment double counting. An original pending
+Payment can already carry its revised amount; this is not described as a frozen
+original price. No net cash balance, spendable credit, reward value or external
+refund is inferred. Ledger amounts are validated against immutable change events.
+
+Cancelled reservations can now be summarized when cancellation charge and ledger
+treatment are consistent. Incomplete legacy cancellations still return a safe
+conflict. The existing stay-obligation field remains a historical stay cost, not
+a cancellation balance. Migration 004 remains unapplied to development MySQL,
+and the SQLite/mutex test limitation above applies.
+
+## Atomic cancellation reconciliation (3B.3B)
+
+The existing public cancellation service performs an owned initial read, ends the
+earlier transaction, then locks active User -> owned Reservation -> Payments
+ascending ID -> Adjustments ascending ID with authoritative ORM refresh. Existing
+payment ambiguity, ownership, confirmed-status and duplicate-cancellation guards
+remain. A duplicate cancellation still returns HTTP 409. Ordinary cancellation
+retains its original Payment record: unpaid booking status stays pending, paid
+booking status becomes the existing internal `refunded` marker, and the booking
+amount never changes. This marker does not describe an external bank refund.
+
+For changed reservations, the event chain and ledger must validate before any
+cancellation mutation. Pending/failed primary charges become voided and cannot be
+settled later. Their amounts, event relationships, creation times and unset
+settlement timestamps are preserved; only status and UTC updated time change.
+Paid primary charges remain completely unchanged and get one equal-amount linked
+`cancellation_reconciliation` credit with status `recorded`. Recorded primary
+credits remain completely unchanged and get one equal-amount linked recorded
+debit, superseding their reservation-specific effect without collecting money.
+Reversals have no settlement timestamp, are not account balances, and cannot be
+settled through the internal charge service. Parent/change/owner, opposite kind,
+equal amount, primary role, and uniqueness guards prevent duplicate or unrelated
+compensation. No reconciliation is created for a voided, never-paid charge.
+
+The cancellation charge remains a separate pending Payment: current reservation
+total times the existing 20% rate. Decimal cent normalization aligns the amount
+and response with DECIMAL(10,2); no fee/base/tax/service-fee policy changes. A zero
+cent fee is represented as zero, not an invented positive charge. There is one
+revision increment and one commit for all voids, reversals, reservation/payment
+status changes and cancellation Payment creation. Any failure rolls back them all.
+Reconciliation helpers stage records without independently committing, and
+cancellation never calls SerpApi. Existing settlement and change operations use
+compatible locks; cancelled/voided charges cannot generate later payments.
+
+Financial summaries keep all original fields and add voided-charge totals,
+explicit linked cancellation reconciliations, reconciliation credit/debit totals,
+the cancellation Payment, and separate outstanding booking/cancellation amounts.
+Primary adjustments and reversals are separate lists and separate buckets.
+Historical paid charges and recorded credits remain visible; recorded reversals
+are neither payments received nor collectible charges. A cancelled stay has zero
+outstanding booking/change obligations; its pending cancellation fee is reported
+only as an outstanding cancellation obligation. No credits, reversals or original
+booking funds are silently netted against that fee, and no net payout is inferred.
+
+Read validation rejects missing/contradictory reversals, cross-event parents,
+altered amounts, paid-history rewrites, collectible charges after cancellation,
+or missing/mismatched cancellation payments. Public cancellation responses keep
+their fields and numeric types. Confirmation, adjustment settlement, and summary
+routes remain unregistered. No frontend, JWT, provider, migration or real-database
+changes are part of this increment. Contention tests use isolated SQLite with
+explicitly simulated row waits; real MySQL/InnoDB has not been verified.
 
 Two small additions keep reconciliation within the adjustment table:
 
@@ -89,11 +190,11 @@ entry per change. The unique parent reference prevents duplicate reconciliation.
 The composite self-FK requires parent and child to belong to the same change.
 No third ledger table or new Payment type is introduced.
 
-A future cancellation can void a pending charge, retain a paid charge and record
+Cancellation can void a pending/failed charge, retain a paid charge and record
 a compensating credit, or retain a recorded credit and record a compensating
 debit. Reconciliation entries use `recorded` status and cannot be collected as
 new pending payments. These are internal records, not bank refunds or spendable
-funds. Schema support does not calculate amounts or perform any reconciliation.
+funds. The cancellation helper now applies these equal-and-opposite reversals.
 
 MySQL 5.7 CHECK enforcement is not used. The persistence input schema
 `ReservationChangeAdjustmentRecord` validates positive, finite cent amounts,

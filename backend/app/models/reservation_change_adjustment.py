@@ -1,7 +1,8 @@
-"""Internal ledger mappings only; no settlement or cancellation behavior.
+"""Internal ledger mappings; charge settlement lives in the payment service.
 
 One price_change entry and one cancellation_reconciliation entry per change.
 The latter points to the original adjustment, preserving its amount/history.
+Cancellation reversals are recorded entries, distinct from bank activity.
 """
 
 from datetime import datetime

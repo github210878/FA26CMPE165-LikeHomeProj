@@ -351,12 +351,41 @@ def get_latest_reservation_change(db: Session, reservation_id: int):
     )
 
 
+def get_owned_change_adjustment(db: Session, adjustment_id: int, user_id: int):
+    """Follow persisted adjustment/event/reservation/user ownership, without locks."""
+    with db.no_autoflush:
+        return (
+            db.query(ReservationChangeAdjustment, ReservationChangeEvent, Reservation)
+            .join(ReservationChangeEvent, ReservationChangeAdjustment.change_id == ReservationChangeEvent.change_id)
+            .join(Reservation, ReservationChangeEvent.reservation_id == Reservation.reservation_id)
+            .join(User, Reservation.user_id == User.user_id)
+            .filter(
+                ReservationChangeAdjustment.adjustment_id == adjustment_id,
+                Reservation.user_id == user_id, ReservationChangeEvent.user_id == user_id,
+                User.status == "active",
+            )
+            .populate_existing()
+            .first()
+        )
+
+
+def get_reservation_change_history(db: Session, reservation_id: int):
+    return (
+        db.query(ReservationChangeEvent)
+        .filter(ReservationChangeEvent.reservation_id == reservation_id)
+        .order_by(ReservationChangeEvent.revision_after)
+        .populate_existing()
+        .all()
+    )
+
+
 def get_reservation_for_cancellation(db: Session, reservation_id: int, user_id: int):
     """Lock only the authenticated user's reservation for cancellation."""
     return (
         db.query(Reservation)
         .filter(Reservation.reservation_id == reservation_id)
         .filter(Reservation.user_id == user_id)
+        .populate_existing()
         .with_for_update()
         .first()
     )
@@ -385,6 +414,7 @@ def get_payments_for_cancellation(db: Session, reservation_id: int):
         db.query(Payment)
         .filter(Payment.reservation_id == reservation_id)
         .order_by(Payment.payment_id)
+        .populate_existing()
         .with_for_update()
         .all()
     )

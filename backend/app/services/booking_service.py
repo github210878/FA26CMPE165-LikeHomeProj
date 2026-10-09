@@ -26,6 +26,11 @@ def _money(value: Decimal) -> Decimal:
     return value.quantize(MONEY_CENT, rounding=ROUND_HALF_UP)
 
 
+def _cancellation_charge_amount(total_price) -> Decimal:
+    """Existing percentage/base, normalized to the database's cent precision."""
+    return _money(Decimal(str(total_price)) * Decimal(str(cancellation_fee)))
+
+
 def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> BookingResponse:
     """Recheck the accepted property quote before one atomic local booking write."""
     try:
@@ -189,7 +194,19 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
 
 def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationResponse:
     """Record a cancellation atomically; this does not process an external refund."""
+    # Local imports avoid the pricing/quote services' existing import dependency
+    # on this module. Reconciliation stages writes and never commits separately.
+    from app.services.reservation_change_service import _require_active_user
+    from app.services.reservation_change_payment_service import reconcile_adjustments_for_cancellation
+
     try:
+        with db.no_autoflush:
+            owned = booking_dao.get_owned_reservation_for_change(db, booking_id, user_id)
+            if owned is None:
+                raise HTTPException(status_code=404, detail="Reservation not found")
+        # End authentication/ownership's earlier RR snapshot before waiting.
+        db.rollback()
+        _require_active_user(db, user_id, lock=True)
         reservation = booking_dao.get_reservation_for_cancellation(
             db, booking_id, user_id
         )
@@ -203,6 +220,8 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
         payments = booking_dao.get_payments_for_cancellation(
             db, reservation.reservation_id
         )
+        adjustments = booking_dao.get_adjustments_for_change(db, booking_id, lock=True)
+        changes = booking_dao.get_reservation_change_history(db, booking_id)
         booking_payments = [p for p in payments if p.payment_type == "booking"]
         if len(booking_payments) != 1 or any(
             p.payment_type == "cancellation" for p in payments
@@ -214,13 +233,17 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
         booking_payment = booking_payments[0]
         if booking_payment.payment_status not in ("pending", "paid"):
             raise HTTPException(status_code=409, detail="Reservation payment state is ambiguous")
+        if reservation.revision >= 4294967295:
+            raise HTTPException(status_code=409, detail="Reservation revision is unsupported")
+        if changes or adjustments:
+            reconcile_adjustments_for_cancellation(db, reservation, payments, changes, adjustments, user_id)
         reservation.status = "cancelled"
         reservation.revision += 1
         if booking_payment.payment_status == "paid":
             booking_payment.payment_status = "refunded"
         cancellation_payment = Payment(
             reservation_id=reservation.reservation_id,
-            amount=reservation.total_price * cancellation_fee,
+            amount=float(_cancellation_charge_amount(reservation.total_price)),
             payment_type="cancellation",
             payment_status="pending",
         )

@@ -15,6 +15,7 @@ from app.models.hotel import Hotel
 from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
+from app.models.user import User
 from app.routers.booking_router import router as booking_router
 from app.services import booking_service
 
@@ -34,6 +35,7 @@ def engine():
 @pytest.fixture
 def booking(engine):
     with Session(engine) as db:
+        db.add(User(user_id=7, email="owner@example.test", password_hash="test", status="active"))
         hotel = Hotel(name="Hotel", hotel_token="test-hotel-property", street="123 Main St", city="San Jose", state="CA",
                       zip_code="95112", country="USA")
         db.add(hotel)
