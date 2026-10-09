@@ -413,7 +413,7 @@ def test_tampered_or_unsupported_tokens_are_rejected(quote_app, case):
 
 
 @pytest.mark.parametrize("changes", [
-    {"type": "user"}, {"version": 2}, {"version": True}, {"aud": "other"}, {"iss": "other"},
+    {"type": "user"}, {"version": 3}, {"version": True}, {"aud": "other"}, {"iss": "other"},
     {"iat": True}, {"exp": 1}, {"reservation_id": "1"}, {"unexpected": "field"},
 ])
 def test_wrong_purpose_or_malformed_signed_claims_are_rejected(quote_app, changes):

@@ -19,7 +19,7 @@ class Reservation(Base):
 
     room_type_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # Persistence only: services will increment this in a later increment.
+    # Payment/cancellation transitions increment this in their existing transaction.
     revision: Mapped[int] = mapped_column(
         Integer().with_variant(INTEGER(unsigned=True), "mysql"),
         default=0, server_default="0", nullable=False,

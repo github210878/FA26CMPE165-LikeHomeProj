@@ -203,7 +203,7 @@ def test_two_serialized_pay_attempts_share_one_transition(monkeypatch):
     commits = []
     payment = SimpleNamespace(payment_id=1, reservation_id=1, amount=226.8,
                               payment_type="booking", payment_status="pending")
-    reservation = SimpleNamespace(status="confirmed")
+    reservation = SimpleNamespace(status="confirmed", revision=0)
 
     class Transaction:
         def __init__(self):
@@ -240,3 +240,4 @@ def test_two_serialized_pay_attempts_share_one_transition(monkeypatch):
     assert [result.payment_status for result in results] == ["paid", "paid"]
     assert commits == ["paid"]
     assert payment.payment_status == "paid"
+    assert reservation.revision == 1

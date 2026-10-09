@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.models.hotel import Hotel
 from app.models.payment import Payment
 from app.models.reservation import Reservation
+from app.models.reservation_change_event import ReservationChangeEvent
 from app.models.room_type import RoomType
 from app.models.user import User
 
@@ -305,6 +306,23 @@ def get_reservation_for_cancellation(db: Session, reservation_id: int, user_id: 
         .with_for_update()
         .first()
     )
+
+
+def get_owned_change_event_by_quote_jti(db: Session, quote_jti: str, reservation_id: int, user_id: int):
+    """Read a receipt without writes/locks; final confirmation must recheck under locks."""
+    with db.no_autoflush:
+        return (
+            db.query(ReservationChangeEvent)
+            .join(Reservation, ReservationChangeEvent.reservation_id == Reservation.reservation_id)
+            .filter(
+                ReservationChangeEvent.quote_jti == quote_jti,
+                ReservationChangeEvent.reservation_id == reservation_id,
+                ReservationChangeEvent.user_id == user_id,
+                Reservation.user_id == user_id,
+            )
+            .populate_existing()
+            .first()
+        )
 
 
 def get_payments_for_cancellation(db: Session, reservation_id: int):

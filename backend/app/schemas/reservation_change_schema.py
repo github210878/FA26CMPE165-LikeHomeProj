@@ -74,6 +74,16 @@ class ReservationChangeConfirmRequest(ReservationChangeQuoteRequest):
         return value
 
 
+class ReservationChangeReceiptRequest(ReservationChangeConfirmRequest):
+    """Read-only historical retry input; never use this to authorize a new change."""
+
+    @model_validator(mode="after")
+    def valid_stay(self) -> "ReservationChangeReceiptRequest":
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("Check-out must follow check-in")
+        return self
+
+
 class ReservationChangeQuoteResponse(BaseModel):
     """A signed ten-minute review; it does not finalize a reservation change."""
 

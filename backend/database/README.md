@@ -1,16 +1,43 @@
 # Reservation change persistence (migration 004)
 
-Increment 3B.1 supplies schema and mappings only. Nothing applies migrations at
-startup. No confirmation, quote consumption, settlement, cancellation adjustment,
-or revision increment is implemented. ORM `create_all` does not migrate tables.
+Increment 3B.1 supplies schema and mappings. Increment 3B.2A adds revision-aware
+quotes, canonical money, Pay/cancellation revision increments and read-only
+receipt recognition. Nothing applies migrations at startup. No final change
+confirmation, quote consumption, adjustment settlement or cancellation ledger
+reconciliation is implemented. ORM `create_all` does not migrate tables.
 
 ## Schema and cancellation reconciliation
 
 `reservations.revision` starts at zero. The date index supports existing owner
 overlap/history queries. Events store committed receipts, hashes (not raw JWTs),
 before/after revisions, dates, room IDs, exact obligations and reviewed context.
-The quote format's `version` is not the reservation revision. Explicit revision
-claims and transactional quote consumption are future work.
+The quote format's `version` is not the reservation revision. Format 2 requires
+a dedicated strict unsigned `reservation_revision` claim. Old-format reviews
+must be replaced, never interpreted as revision zero. Expiry remains ten minutes.
+Successful pending-to-paid and cancellation transitions increment revision once
+inside their existing transactions; rejected/repeated operations do not. Failed
+commits roll back the revision and financial transition together.
+
+## Read-only idempotency recognition
+
+The change receipt helper verifies signature, purpose, format and signed identity
+before looking up an owner-scoped committed event by JTI. It checks SHA-256 of
+the exact token and canonical confirmation input (dates, explicit acceptance,
+cent-normalized prices and authenticated/path identity). Conflicting reuse is
+HTTP 409. Matching receipts return a detached JSON copy without modifying rows.
+Raw tokens are never logged or inserted. None means no receipt, not permission
+to apply a quote. Reads cannot autoflush staged records or consume a quote.
+
+An exact historical receipt can outlive quote expiry/current revision and dates.
+`ReservationChangeReceiptRequest` is specifically a read-only historical input;
+it is NEVER valid authorization for new writes. Normal confirmation and provider
+request schemas still reject past dates. The signature decoder likewise is only
+structural verification: new applications require full quote time/state checks.
+
+Increment 3B.2B must recheck consumption under mutation locks in a fresh
+transaction, repeat overlap checks, revalidate provider pricing and atomically
+persist the event/revision/financial result. The current ordinary receipt lookup
+does not resolve concurrent consumption or guarantee a fresh InnoDB snapshot.
 
 Two small additions keep reconciliation within the adjustment table:
 
@@ -49,14 +76,19 @@ that records exist, not that a supplied payment belongs to the supplied stay.
 
 New history/ledger money uses ORM Numeric(10,2)/Decimal and SQL DECIMAL(10,2).
 Compare revised payment obligations (including tax), not reservation totals.
+Fingerprint money and signed quote prices use fixed two-decimal strings via the
+existing cent rounding helper. The signed review and numeric quote response use
+the same normalized amounts. Confirmation hashes also normalize cents, so
+floating-point representation artifacts do not cause false conflicts. Decimal
+fingerprints are supported without converting existing ORM money fields.
 Store JSON monetary snapshots as canonical decimal strings or integer cents;
 plain JSON cannot encode Decimal directly. Convert to numeric values only at
 existing API serialization boundaries where that contract requires it.
 
 Existing Reservation/Payment/RoomType Float mappings remain unchanged in this
-increment. Cancellation currently multiplies by a float fee and quote fingerprint
-serialization cannot encode Decimal. Increment 3B.2 must align these mappings,
-the existing arithmetic/serialization and fingerprint normalization together;
+increment. Cancellation currently multiplies by a float fee; changing the ORM
+types alone would break that existing operation. A coordinated future step must
+align the mappings with existing arithmetic/API serialization together;
 do not partially convert these fields. Existing SQL already uses DECIMAL(10,2),
 so the normal SQL-created database needs no monetary column conversion.
 

@@ -174,6 +174,7 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
             if reservation.status != "confirmed":
                 raise HTTPException(status_code=409, detail="Payment cannot be completed")
             payment.payment_status = "paid"
+            reservation.revision += 1
             result = PaymentResponse(**booking_dao.payment_result(payment))
             db.commit()
             return result
@@ -214,6 +215,7 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
         if booking_payment.payment_status not in ("pending", "paid"):
             raise HTTPException(status_code=409, detail="Reservation payment state is ambiguous")
         reservation.status = "cancelled"
+        reservation.revision += 1
         if booking_payment.payment_status == "paid":
             booking_payment.payment_status = "refunded"
         cancellation_payment = Payment(
