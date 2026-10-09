@@ -7,7 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 
 
 class HotelSearchRequest(BaseModel):
-    q: str = Field(..., description="Destination / search text, e.g. 'San Jose hotels'")
+    q: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Destination / search text, e.g. 'San Jose hotels'",
+    )
     check_in_date: str = Field(..., description="YYYY-MM-DD; today or later")
     check_out_date: str = Field(..., description="YYYY-MM-DD; after check-in")
     adults: int = Field(default=2, ge=1, le=20)
@@ -29,6 +34,16 @@ class HotelSearchRequest(BaseModel):
         "price_high_to_low",
         "rating_high_to_low",
     ] = "recommended"
+
+    @field_validator("q", mode="before")
+    @classmethod
+    def validate_query(cls, value: object) -> object:
+        if not isinstance(value, str):
+            raise ValueError("Destination must be text")
+        value = value.strip()
+        if not value:
+            raise ValueError("Destination cannot be blank")
+        return value
 
     @field_validator("check_in_date", "check_out_date")
     @classmethod

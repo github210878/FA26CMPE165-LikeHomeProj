@@ -279,12 +279,71 @@ def test_service_forwards_all_search_fields_to_client(monkeypatch):
         db=object(),
     )
 
-    assert captured["q"] == "Bali resorts"
-    assert captured["adults"] == 4
-    assert captured["children"] == 2
-    assert captured["currency"] == "EUR"
-    assert captured["gl"] == "fr"
-    assert captured["hl"] == "fr"
+    assert captured == {
+        "q": "Bali resorts",
+        "check_in_date": "2026-10-05",
+        "check_out_date": "2026-10-08",
+        "adults": 4,
+        "children": 2,
+        "currency": "EUR",
+        "gl": "fr",
+        "hl": "fr",
+    }
+
+
+def test_optional_search_controls_are_forwarded_without_leaking_ui_sorting(monkeypatch):
+    captured = {}
+
+    def fake_search(params):
+        captured.update(params)
+        return {"properties": []}
+
+    monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", fake_search)
+
+    hotel_service.search_hotels(
+        make_request(
+            next_page_token="next-page-token",
+            no_cache=True,
+            sort_by="price_low_to_high",
+        ),
+        db=object(),
+    )
+
+    assert captured["next_page_token"] == "next-page-token"
+    assert captured["no_cache"] == "true"
+    assert "sort_by" not in captured
+
+
+def test_empty_optional_search_controls_are_not_forwarded(monkeypatch):
+    captured = {}
+
+    def fake_search(params):
+        captured.update(params)
+        return {"properties": []}
+
+    monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", fake_search)
+
+    hotel_service.search_hotels(
+        make_request(next_page_token="", no_cache=False),
+        db=object(),
+    )
+
+    assert "next_page_token" not in captured
+    assert "no_cache" not in captured
+
+
+def test_default_children_value_is_present_in_the_provider_payload(monkeypatch):
+    captured = {}
+
+    def fake_search(params):
+        captured.update(params)
+        return {"properties": []}
+
+    monkeypatch.setattr(hotel_service.serpapi_client, "search_google_hotels", fake_search)
+
+    hotel_service.search_hotels(make_request(children=0), db=object())
+
+    assert captured["children"] == 0
 
 
 # ---------------------------------------------------------------------------

@@ -107,6 +107,15 @@ def test_missing_bearer_credentials_are_rejected():
     assert exc_info.value.status_code == 401
 
 
+def test_missing_bearer_credentials_still_return_401_when_secret_is_unset(monkeypatch):
+    monkeypatch.setattr(auth, "JWT_SECRET_KEY", None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth.get_current_user_id(db=object(), credentials=None)
+
+    assert exc_info.value.status_code == 401
+
+
 def test_expired_token_is_rejected(monkeypatch):
     monkeypatch.setattr(auth, "JWT_EXPIRE_MINUTES", -1)
     token = auth.create_access_token(42, subject_type="user")
