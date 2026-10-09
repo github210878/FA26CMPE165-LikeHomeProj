@@ -17,13 +17,14 @@ if BACKEND_DIR not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def fixed_search_calendar(monkeypatch):
-    """Keep search fixtures valid regardless of when the tests are run."""
-    from app.schemas import hotel_schema
+def fixed_stay_calendar(monkeypatch):
+    """Keep search and booking fixtures valid regardless of the real date."""
+    from app.schemas import booking_schema, hotel_schema
 
-    class SearchDate(date):
+    class StayDate(date):
         @classmethod
         def today(cls):
             return cls(2026, 9, 29)
 
-    monkeypatch.setattr(hotel_schema, "date", SearchDate)
+    monkeypatch.setattr(hotel_schema, "date", StayDate)
+    monkeypatch.setattr(booking_schema, "date", StayDate)
