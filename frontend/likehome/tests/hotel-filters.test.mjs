@@ -10,8 +10,10 @@ import { checkoutHref, parseCheckoutSelection } from "../lib/checkout-selection.
 import { filterHotels, getAmenityOptions, parseMaxPrice } from "../lib/hotel-filters.ts";
 import { getHotelThumbnailUrl } from "../lib/hotel-thumbnail.ts";
 import { HOTEL_SORT_OPTIONS, sortHotels } from "../lib/hotel-sort.ts";
+import * as recentSearches from "../lib/recent-searches.ts";
 import { searchHotels } from "../lib/search.ts";
 import { searchError } from "../lib/search-error.ts";
+import { validateSearchValues } from "../lib/search-validation.mjs";
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -105,6 +107,9 @@ const RetryButton = loadComponent("../components/RetryButton.tsx", {});
 const ErrorState = loadComponent("../components/ErrorState.tsx", {
   "./RetryButton": { default: RetryButton },
 });
+const RecentSearches = loadComponent("../app/search/recent-searches.tsx", {
+  "@/lib/recent-searches": recentSearches,
+});
 
 function searchHarness() {
   const slots = [];
@@ -136,7 +141,10 @@ function searchHarness() {
     "@/lib/checkout-selection": { checkoutHref },
     "@/lib/hotel-filters": { filterHotels, getAmenityOptions },
     "@/lib/hotel-sort": { HOTEL_SORT_OPTIONS, sortHotels },
+    "@/lib/recent-searches": recentSearches,
+    "@/lib/search-validation.mjs": { validateSearchValues },
     "./search-form": { default: SearchForm },
+    "./recent-searches": { default: RecentSearches },
   });
 
   return {
@@ -172,6 +180,13 @@ function searchHarness() {
 
 const search = { destination: " San Jose hotels ", checkIn: "2026-11-01", checkOut: "2026-11-03", guests: "3" };
 
+async function submitSearch(form, values) {
+  // onSearch now starts the async request through a void callback. Let the
+  // mocked fetch and JSON parsing settle before asserting the rendered state.
+  form.props.onSearch(values);
+  await new Promise(setImmediate);
+}
+
 test("retry repeats the failed search once, stays disabled while pending, and clears on success", async () => {
   const calls = [];
   let resolveRetry;
@@ -181,7 +196,7 @@ test("retry repeats the failed search once, stays disabled while pending, and cl
     return new Promise((resolve) => { resolveRetry = resolve; });
   };
   const harness = searchHarness();
-  await harness.render().form.props.onSearch(search);
+  await submitSearch(harness.render().form, search);
   let view = harness.render();
   assert.match(view.html, /The search took too long/);
   assert.match(view.html, /role="alert"/);
@@ -215,7 +230,7 @@ test("load more appends the next page and keeps the pagination token out of card
   };
 
   const harness = searchHarness();
-  await harness.render().form.props.onSearch(search);
+  await submitSearch(harness.render().form, search);
   let view = harness.render();
   let loadMore = view.nodes.find((node) => node.type === "button" && node.props.children === "Load more stays");
   assert.ok(loadMore);
@@ -234,12 +249,12 @@ test("failed retries remain available and validation errors require a corrected 
   let status = 502;
   globalThis.fetch = async () => new Response(null, { status });
   const harness = searchHarness();
-  await harness.render().form.props.onSearch(search);
+  await submitSearch(harness.render().form, search);
   harness.render().retry.props.onRetry();
   await new Promise(setImmediate);
   assert.equal(harness.render().retry.props.isRetrying, false);
   status = 422;
-  await harness.render().form.props.onSearch({ ...search, destination: "New York" });
+  await submitSearch(harness.render().form, { ...search, destination: "New York" });
   const view = harness.render();
   assert.equal(view.retry, undefined);
   assert.match(view.html, /Check your search details/);
@@ -257,7 +272,7 @@ test("price, amenity, combination, clear, count and empty UI update locally with
   };
   const harness = searchHarness();
   assert.match(harness.render().html, /Enter a destination/);
-  await harness.render().form.props.onSearch(search);
+  await submitSearch(harness.render().form, search);
   let view = harness.render();
   const loaded = view.cards.map((card) => card.props.hotel);
   assert.deepEqual(loaded, hotels);
@@ -317,7 +332,7 @@ test("price, amenity, combination, clear, count and empty UI update locally with
   view.price.props.onChange({ target: { value: "0" } });
   view = harness.render();
   assert.equal(view.cards.length, 0);
-  await view.form.props.onSearch(search);
+  await submitSearch(view.form, search);
   view = harness.render();
   assert.equal(view.cards.length, 5);
   assert.equal(view.price.props.value, "");
@@ -332,7 +347,7 @@ test("API zero results are distinct from filters and absent amenities create no 
     result_count: properties.length, properties,
   }));
   const harness = searchHarness();
-  await harness.render().form.props.onSearch(search);
+  await submitSearch(harness.render().form, search);
   let view = harness.render();
   assert.match(view.html, /No hotels found for this search/);
   assert.ok(!view.html.includes("No stays match your current filters"));
@@ -340,7 +355,7 @@ test("API zero results are distinct from filters and absent amenities create no 
   assert.equal(view.sort, undefined);
 
   properties = [hotel("No amenities", null, null, null)];
-  await view.form.props.onSearch(search);
+  await submitSearch(view.form, search);
   view = harness.render();
   assert.match(view.html, /No amenities listed in these results/);
   assert.equal(view.nodes.filter((node) => node.type === "input" && node.props.type === "checkbox").length, 0);
@@ -360,7 +375,7 @@ test("sort control composes with filters, retains context and counts, clears loc
     }));
   };
   const harness = searchHarness();
-  await harness.render().form.props.onSearch(search);
+  await submitSearch(harness.render().form, search);
   let view = harness.render();
   const loaded = view.cards.map((card) => card.props.hotel);
   const originalHrefs = new Map(view.cards.map((card) => [card.props.hotel, card.props.checkoutHref]));
@@ -433,7 +448,7 @@ test("sort control composes with filters, retains context and counts, clears loc
   assert.equal(view.cards.length, 5);
   assert.equal(calls, 1);
 
-  await view.form.props.onSearch({ ...search, destination: "Los Angeles hotels" });
+  await submitSearch(view.form, { ...search, destination: "Los Angeles hotels" });
   view = harness.render();
   assert.equal(view.sort.props.value, "recommended");
   assert.deepEqual(view.cards.map((card) => card.props.hotel), ratedHotels);
