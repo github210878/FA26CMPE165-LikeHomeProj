@@ -147,6 +147,13 @@ class HotelRevalidationRequest(BaseModel):
             raise ValueError("A SerpApi property token is required")
         return value
 
+    @field_validator("adults", "children", mode="before")
+    @classmethod
+    def whole_guest_count(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Guest counts must be whole numbers")
+        return value
+
     @model_validator(mode="after")
     def valid_stay(self) -> "HotelRevalidationRequest":
         if self.check_in_date < date.today():
