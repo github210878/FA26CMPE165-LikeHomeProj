@@ -5,7 +5,7 @@ normalize quote timestamps to UTC before removing tzinfo. JSON money snapshots
 must use canonical decimal strings (or integer cents), never raw Decimal values.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import CHAR, JSON, Date, DateTime, Enum, ForeignKey, Index, Integer, LargeBinary, Numeric, UniqueConstraint
@@ -15,10 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.functions import FunctionElement
 
 from app.config.database import Base
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from app.utilities.timestamps import utc_now
 
 
 class _CurrentTimestamp(FunctionElement):

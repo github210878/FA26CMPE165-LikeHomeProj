@@ -2,7 +2,8 @@ from sqlalchemy import Float, String, Integer, Date, DateTime, Enum, Index
 from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.orm import Mapped, mapped_column
 from app.config.database import Base
-from datetime import date, datetime
+from datetime import date
+from app.utilities.timestamps import utc_now
 
 
 class Reservation(Base):
@@ -40,4 +41,4 @@ class Reservation(Base):
         Enum("confirmed", "cancelled", "completed"), default="confirmed", nullable=False
     )
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, default=utc_now)

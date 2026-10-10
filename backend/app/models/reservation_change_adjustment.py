@@ -13,7 +13,8 @@ from sqlalchemy.dialects import mysql
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config.database import Base
-from app.models.reservation_change_event import _CurrentTimestamp, utc_now
+from app.models.reservation_change_event import _CurrentTimestamp
+from app.utilities.timestamps import utc_now
 
 
 class ReservationChangeAdjustment(Base):

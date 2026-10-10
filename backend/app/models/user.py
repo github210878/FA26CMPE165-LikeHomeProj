@@ -4,6 +4,7 @@ from sqlalchemy import String, Integer, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config.database import Base
+from app.utilities.timestamps import utc_now
 
 
 class User(Base):
@@ -21,7 +22,7 @@ class User(Base):
 
     reward_points: Mapped[int] = mapped_column(Integer, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     status: Mapped[str] = mapped_column(Enum("active", "deleted"), default="active")
 

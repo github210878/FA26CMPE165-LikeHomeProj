@@ -2,7 +2,7 @@ from tokenize import String
 from sqlalchemy import Float, String, Integer, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column
 from app.config.database import Base
-from datetime import datetime
+from app.utilities.timestamps import utc_now
 
 
 class Payment(Base):
@@ -24,4 +24,4 @@ class Payment(Base):
         Enum("pending", "paid", "failed", "refunded"), default="pending", nullable=False
     )
 
-    created_at: Mapped[DateTime] = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, default=utc_now)

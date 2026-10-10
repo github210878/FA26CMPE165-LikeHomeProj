@@ -1,5 +1,11 @@
 # US7.2 backend API integration
 
+This historical API checkpoint predates main synchronization and the UTC
+readiness increment. Its proposed UTC configuration below was superseded by the
+implemented connection event and verified results in the
+[UTC readiness report](database/US7.2_UTC_READINESS.md). Its test counts describe
+the API checkpoint, not the current branch.
+
 Source integration is complete; **development deployment is NOT READY**.
 The updated stack was not started. Development MySQL, environment files,
 containers and the separate frontend worktree were not accessed for mutation.

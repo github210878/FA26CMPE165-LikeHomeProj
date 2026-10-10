@@ -18,7 +18,7 @@ import uuid
 
 import pymysql
 import pytest
-from sqlalchemy import URL, create_engine, event
+from sqlalchemy import URL, event
 
 BACKEND = Path(__file__).resolve().parents[2]
 ROOT = BACKEND.parent
@@ -72,33 +72,36 @@ class Context:
         self.evidence = {}
         self.engines = []
 
-    def connect(self, schema=None):
+    def connect(self, schema=None, *, initialize_utc=True):
         assert schema in (None, self.upgrade, self.fresh)
         connection = pymysql.connect(**self.options, database=schema)
         with connection.cursor() as cursor:
             cursor.execute("SELECT @@server_id, VERSION()")
             marker, version = cursor.fetchone()
             assert marker == self.server_id and version == "5.7.44", "Wrong disposable server"
-            cursor.execute("SET time_zone='+00:00'")
+            if initialize_utc:
+                cursor.execute("SET time_zone='+00:00'")
             cursor.execute("SET SESSION innodb_lock_wait_timeout=8")
         connection.commit()
         return connection
 
-    def engine(self, schema):
+    def engine(self, schema, **options):
         assert schema in (self.upgrade, self.fresh)
-        engine = create_engine(URL.create(
+        # Exercise the production initializer, not a test-only UTC substitute.
+        from app.config.database import create_app_engine
+        settings = dict(hide_parameters=True, pool_size=10, max_overflow=5, pool_pre_ping=True)
+        settings.update(options)
+        engine = create_app_engine(URL.create(
             "mysql+pymysql", username=self.options["user"], password=self.options["password"],
             host=self.options["host"], port=self.options["port"], database=schema,
-        ), hide_parameters=True, pool_size=10, max_overflow=5, pool_pre_ping=True)
+        ), **settings)
 
         @event.listens_for(engine, "connect")
         def initialize(connection, _):
             with connection.cursor() as cursor:
                 cursor.execute("SELECT @@server_id, VERSION(), DATABASE()")
                 assert cursor.fetchone() == (self.server_id, "5.7.44", schema)
-                cursor.execute("SET time_zone='+00:00'")
                 cursor.execute("SET SESSION innodb_lock_wait_timeout=8")
-            connection.commit()
 
         self.engines.append(engine)
         return engine
@@ -250,6 +253,7 @@ def main():
         context.evidence = findings
         print("MySQL 5.7.44 ready; migration applied once, historical data preserved, fresh schema installed", flush=True)
         result = pytest.main([str(Path(__file__).with_name("test_mysql57_contract.py")),
+                              str(Path(__file__).with_name("test_mysql57_utc.py")),
                               "-q", "-p", "no:cacheprovider"], plugins=[Plugin(context)])
         findings["pytest_exit_code"] = int(result)
     finally:

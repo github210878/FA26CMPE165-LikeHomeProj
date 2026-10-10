@@ -234,8 +234,12 @@ separate payment status determines whether the LikeHome payment step completed.
 The feature branch registers authenticated confirmation, internal adjustment
 payment and financial-summary routes. See [the API integration report](US7.2_API_INTEGRATION.md)
 for request/response contracts, verification and the deployment boundary.
+MySQL connections now initialize their session to UTC; the
+[UTC readiness report](database/US7.2_UTC_READINESS.md) records disposable live
+verification and legacy timestamp limits. Follow the
+[team rollout procedure](database/US7.2_TEAM_ROLLOUT.md) for each target.
 **Development deployment is NOT READY:** Migration 004 remains unapplied and
-application MySQL session UTC configuration still requires verification.
+each database still needs approved schema, backup, strict-mode and UTC preflight.
 Do not run the updated stack against the existing development database yet.
 
 ### User sign up:

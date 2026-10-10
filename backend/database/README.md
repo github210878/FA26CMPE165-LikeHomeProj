@@ -2,12 +2,16 @@
 
 Increment 3B.1 supplies schema and mappings. Increment 3B.2A adds revision-aware
 quotes, canonical money, Pay/cancellation revision increments and read-only
-receipt recognition. Nothing applies migrations at startup. No final change
-endpoint is registered. Increment 3B.2B adds the atomic confirmation service,
+receipt recognition. Nothing applies migrations at startup.
+Increment 3B.2B adds the atomic confirmation service,
 event consumption and primary charge/credit persistence. Increment 3B.3A adds
 internal charge settlement and financial summaries. Increment 3B.3B extends the
 existing cancellation transaction with internal ledger reconciliation and its
-financial summary. ORM `create_all` does
+financial summary. The later API increment registers authenticated confirmation,
+adjustment payment and financial-summary routes; see the
+[API checkpoint](../US7.2_API_INTEGRATION.md). The UTC readiness increment
+initializes new MySQL connections through the shared application engine factory.
+ORM `create_all` does
 not migrate tables. Migration 004 remains a manual prerequisite and must not be
 applied to development MySQL by this increment.
 
@@ -39,7 +43,7 @@ it is NEVER valid authorization for new writes. Normal confirmation and provider
 request schemas still reject past dates. The signature decoder likewise is only
 structural verification: new applications require full quote time/state checks.
 
-## Atomic confirmation service (unregistered)
+## Atomic confirmation service
 
 `reservation_change_service.confirm_reservation_change` accepts the existing
 confirmation input and authenticated customer ID using a dedicated request
@@ -74,20 +78,20 @@ only a matching committed token/request receipt permits a successful retry.
 Unrelated integrity errors fail without being interpreted as successful retries.
 Any other validation, deadlock or transaction failure also rolls back all writes.
 
-Confirmation and adjustment settlement remain absent from the router. Backend
-cancellation compatibility is now implemented; activating the full customer
-workflow and frontend integration remain separate authorized increments.
+Confirmation and adjustment settlement are registered in source. Backend
+cancellation compatibility is implemented; development deployment and frontend
+integration still require their own readiness checks.
 Existing public booking APIs remain unchanged. The offline tests use mocked providers and
 isolated SQLite; threaded tests simulate User-row waits with a Python mutex around
 real Sessions. The separate [live verification report](US7.2_MIGRATION_004_VERIFICATION.md)
 records bounded MySQL/InnoDB SQL-lock and service-race tests.
 
-## Internal adjustment payment and summaries (unregistered)
+## Internal adjustment payment and summaries
 
 `reservation_change_payment_service` provides owner-scoped adjustment detail,
 `settle_reservation_change_charge`, and `get_reservation_financial_summary` for
 later UI integration. The customer ID must come from existing `get_current_user_id`
-authentication; no new JWT/role contract or public route is added. Adjustment
+authentication; the registered routes retain that JWT/role contract. Adjustment
 ownership follows Adjustment -> ChangeEvent -> Reservation -> active User, with
 both event and reservation owner checked. Missing/nonowned entries share a 404.
 
@@ -176,8 +180,8 @@ booking funds are silently netted against that fee, and no net payout is inferre
 Read validation rejects missing/contradictory reversals, cross-event parents,
 altered amounts, paid-history rewrites, collectible charges after cancellation,
 or missing/mismatched cancellation payments. Public cancellation responses keep
-their fields and numeric types. Confirmation, adjustment settlement, and summary
-routes remain unregistered. No frontend, JWT, provider, migration or real-database
+their fields and numeric types. The later API increment registers confirmation,
+adjustment settlement and summary routes. No frontend, JWT, provider, migration or real-database
 changes are part of that implementation increment. Its contention tests use isolated
 SQLite with explicitly simulated row waits. The later disposable verification
 also exercises real MySQL/InnoDB waits and focused application-service races.
@@ -241,7 +245,15 @@ use UTC; SQL defaults require a UTC session. Future writers must normalize aware
 quote times to UTC before removing the offset for MySQL DATETIME, and explicitly
 update `updated_at`. There is no automatic settlement-time behavior. A manually
 run migration setting time_zone affects only that connection, not application
-connections. Connection-wide UTC initialization is future integration work.
+connections. `create_app_engine` now registers one MySQL-only SQLAlchemy `connect`
+event to execute `SET SESSION time_zone = '+00:00'` for each new physical
+connection. It leaves global time zone, SQL mode and transaction commits alone.
+SQLite engine configuration is unchanged. User/Reservation/Payment defaults now
+use the same UTC-naive helper as the ledger, so future writes do not send
+host-local naive values into a UTC session. Existing rows and column types are
+not rewritten. Known TIMESTAMP instants survive while their session display can
+change; DATETIME literals do not convert. Unknown historical client/session zones
+require operator review. See the [UTC readiness report](US7.2_UTC_READINESS.md).
 
 ## Before application (manual only)
 
@@ -270,15 +282,23 @@ connections. Connection-wide UTC initialization is future integration work.
 - Fresh database: use like_home_database_init.sql only. It contains the final
   definitions, not ALTER statements; do not also run 001-004.
 - Apply the schema before deploying the new Reservation mapping: it selects the
-  revision column. Running new code on the old database will fail, even though
-  no mutation endpoint is added. Never substitute startup `create_all`.
+  revision column. Running new code on the old database will fail even when the
+  new mutation routes are unused. Never substitute startup `create_all`.
+
+Use the [team rollout procedure](US7.2_TEAM_ROLLOUT.md) for target identification,
+schema milestone checks, restore-tested backups, maintenance, applicable migration
+ordering, UTC/strict-mode checks, smoke tests and failure recovery. It was prepared
+but was not executed against any existing database.
 
 ## Verification
 
-The [2026-10-10 verification report and runbook](US7.2_MIGRATION_004_VERIFICATION.md)
-records 43 passing live MySQL 5.7.44 tests and 734 passing offline backend tests.
-The isolated database-readiness gate is READY; development migration and endpoint
-activation remain separate steps. No development database was contacted.
+The [UTC readiness report](US7.2_UTC_READINESS.md) records **62 passing live MySQL
+5.7.44 tests** (43 existing contract tests plus 19 UTC tests), **6 focused offline
+tests**, and **875 passing backend tests**. The isolated UTC gate is READY;
+coordinated rollout remains NOT READY until each target passes the operator
+preflight and obtains rollout approval. No development database was contacted.
+The [original migration checkpoint](US7.2_MIGRATION_004_VERIFICATION.md) records
+the earlier 43 live / 734 offline results as historical evidence.
 
 The opt-in runner creates and removes its own labeled amd64 container, uses tmpfs
 data and a random loopback-only port, verifies identity before DDL, and rejects
@@ -309,10 +329,12 @@ After manual application, inspect SHOW CREATE TABLE/SHOW INDEX and verify:
 
 ## Rollback and history retention
 
-Before any events/adjustments exist, stop new code, retain a backup, and remove
-adjustments first, then events, then the new index/revision column. Confirm no
-successful change/revision writes exist before treating this as a safe rollback.
-DDL rollback requires explicit recovery steps; ordinary ROLLBACK cannot undo it.
+Keep writers stopped on failure and inspect partial DDL before recovery. Prefer
+a reviewed roll-forward repair. Before any post-cutover writes, restore the
+verified backup to a new approved instance with its compatible previous release
+if the recovery owner chooses that plan. Preserve the failed instance for
+inspection. DDL commits implicitly; ordinary ROLLBACK cannot undo it. Do not use
+table drops or revision removal as a generic recovery procedure.
 
 Once history exists, disable future mutation and preserve/export event receipts,
 charges and credits. Do not drop this ledger or reset revisions as an operational
