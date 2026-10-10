@@ -194,8 +194,8 @@ def _persist_change(db, request, reservation, room, hotel, payment, claims, fres
             amount=abs(difference), status="pending" if difference > 0 else "recorded",
         )
         adjustment = booking_dao.stage_booking_record(db, ReservationChangeAdjustment(**entry.model_dump()))
-    # Internal receipt money stays in canonical cents. Existing public numeric
-    # APIs are untouched; no confirmation route exposes this receipt yet.
+    # Receipt money stays in canonical cents, including exact public retries.
+    # Financial summary and payment APIs retain their numeric money contracts.
     receipt = {
         "change_id": change.change_id, "reservation_id": reservation.reservation_id,
         "revision": reservation.revision, "room_type_id": room_id,

@@ -1,6 +1,6 @@
 """Internal charge acknowledgements and numeric financial read models.
 
-These contracts have no registered customer routes yet. Credits describe
+Authenticated customer routes expose these contracts. Credits describe
 reservation-specific ledger entries, never refunds, reward points or balances.
 """
 

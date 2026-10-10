@@ -440,13 +440,14 @@ def test_lock_order_one_commit_fresh_snapshot_and_no_provider_lock(quote_app, mo
     assert len(calls) == 2
 
 
-def test_quote_service_still_available_and_confirmation_is_unregistered(quote_app):
+def test_quote_service_still_available_and_confirmation_requires_typed_body(quote_app):
     client, _, _, _ = quote_app
     from test_reservation_change_quotes import headers
+    from app.routers.booking_router import router
 
     assert client.post("/bookings/1/change-quote", headers=headers(), json=REQUEST).status_code == 200
-    assert client.post("/bookings/1/change-confirm", headers=headers(), json={}).status_code == 404
-    assert not any("confirm_reservation_change" == getattr(route, "name", None) for route in client.app.routes)
+    assert client.post("/bookings/1/change-confirm", headers=headers(), json={}).status_code == 422
+    assert sum("confirm_reservation_change" == getattr(route, "name", None) for route in router.routes) == 1
 
 
 @pytest.mark.parametrize("status", ["pending", "paid"])

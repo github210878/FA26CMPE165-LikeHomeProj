@@ -382,7 +382,7 @@ def test_validation_does_not_mutate_reservation_payment_room_or_hotel(records):
     assert after == before
 
 
-def test_existing_booking_routes_are_unchanged_and_only_change_review_is_registered():
+def test_existing_booking_routes_are_preserved_with_change_api_routes():
     assert {(route.path, frozenset(route.methods)) for route in router.routes} == {
         ("/bookings/create", frozenset({"POST"})),
         ("/bookings/get-all-bookings", frozenset({"GET"})),
@@ -392,4 +392,7 @@ def test_existing_booking_routes_are_unchanged_and_only_change_review_is_registe
         ("/bookings/pay/{payment_id}", frozenset({"POST"})),
         ("/bookings/cancel-booking/{reservation_id}", frozenset({"POST"})),
         ("/bookings/{reservation_id}/change-quote", frozenset({"POST"})),
+        ("/bookings/{reservation_id}/change-confirm", frozenset({"POST"})),
+        ("/bookings/{reservation_id}/adjustments/{adjustment_id}/pay", frozenset({"POST"})),
+        ("/bookings/{reservation_id}/financial-summary", frozenset({"GET"})),
     }

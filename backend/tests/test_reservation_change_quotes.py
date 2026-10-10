@@ -497,7 +497,7 @@ def test_unsafe_signing_configuration_fails_before_provider_call(quote_app, monk
     assert calls == []
 
 
-def test_quote_and_verification_are_read_only_and_no_confirmation_endpoint_exists(quote_app):
+def test_quote_and_verification_remain_read_only(quote_app):
     client, engine, calls, _ = quote_app
 
     def snapshot():
@@ -523,5 +523,4 @@ def test_quote_and_verification_are_read_only_and_no_confirmation_endpoint_exist
     assert snapshot() == before
     assert not {"UPDATE", "INSERT", "DELETE"}.intersection(statements)
     assert len(calls) == 1
-    assert client.post("/bookings/1/change-confirm", headers=headers(), json=REQUEST).status_code == 404
-    assert not any("confirm" in route.path for route in router.routes)
+    assert client.post("/bookings/1/change-confirm", headers=headers(), json=REQUEST).status_code == 422

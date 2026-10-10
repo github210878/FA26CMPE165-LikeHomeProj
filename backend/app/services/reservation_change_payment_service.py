@@ -1,4 +1,4 @@
-"""Internal adjustment settlement and financial reads; no public routes.
+"""Internal adjustment settlement and authenticated financial reads.
 
 Callers must supply the customer ID from get_current_user_id and a dedicated
 request Session. Reconciliation is staged by the existing cancellation operation.

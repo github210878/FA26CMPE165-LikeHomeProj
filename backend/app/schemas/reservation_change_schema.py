@@ -75,13 +75,50 @@ class ReservationChangeConfirmRequest(ReservationChangeQuoteRequest):
 
 
 class ReservationChangeReceiptRequest(ReservationChangeConfirmRequest):
-    """Read-only historical retry input; never use this to authorize a new change."""
+    """Confirmation input allowing historical retries.
+
+    The service must check committed receipts first and then revalidate every
+    unconsumed request with ReservationChangeConfirmRequest before mutation.
+    """
 
     @model_validator(mode="after")
     def valid_stay(self) -> "ReservationChangeReceiptRequest":
         if self.check_out_date <= self.check_in_date:
             raise ValueError("Check-out must follow check-in")
         return self
+
+
+class ReservationChangeReceiptAdjustment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    adjustment_id: int = Field(strict=True, gt=0)
+    kind: Literal["charge", "credit"]
+    amount: str = Field(pattern=r"^\d+\.\d{2}$")
+    status: Literal["pending", "recorded"]
+
+
+class ReservationChangeReceiptResponse(BaseModel):
+    """Exact committed receipt; money retains the stored canonical cent strings.
+
+    This historical snapshot does not describe the current settlement status.
+    Financial-summary and payment responses retain their numeric money fields.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    change_id: int = Field(strict=True, gt=0)
+    reservation_id: int = Field(strict=True, gt=0)
+    revision: int = Field(strict=True, gt=0, le=4294967295)
+    room_type_id: int = Field(strict=True, gt=0)
+    check_in_date: date
+    check_out_date: date
+    reservation_total: str = Field(pattern=r"^\d+\.\d{2}$")
+    payment_obligation: str = Field(pattern=r"^\d+\.\d{2}$")
+    previous_payment_obligation: str = Field(pattern=r"^\d+\.\d{2}$")
+    payment_difference: str = Field(pattern=r"^-?\d+\.\d{2}$")
+    booking_payment_id: int = Field(strict=True, gt=0)
+    booking_payment_status: Literal["pending", "paid"]
+    adjustment: ReservationChangeReceiptAdjustment | None
 
 
 class ReservationChangeQuoteResponse(BaseModel):

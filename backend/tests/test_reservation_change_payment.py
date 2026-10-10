@@ -25,7 +25,7 @@ from app.services import booking_service, reservation_change_payment_service as 
 from app.utilities import auth, serpapi_client
 
 from test_reservation_change_confirmation import confirm, confirmation, review, snapshot, threaded_database
-from test_reservation_change_quotes import NOW, quote_app
+from test_reservation_change_quotes import NOW, headers, quote_app
 
 
 def make_charge(engine):
@@ -121,7 +121,7 @@ def test_owner_scoped_detail_and_summary_do_not_write(charge):
 
 
 def test_existing_customer_authentication_and_partner_separation_with_test_only_routes(charge):
-    """Wire existing auth only in this disposable app; production routes stay absent."""
+    """Exercise the service auth contract in an additional disposable test app."""
     _, engine, _, _ = charge
     app = FastAPI()
 
@@ -500,7 +500,7 @@ def test_authoritative_state_is_rechecked_after_waiting_for_user_lock(charge, mo
     assert snapshot(engine) == committed
 
 
-def test_provider_is_never_called_and_new_routes_remain_unregistered(charge, monkeypatch):
+def test_provider_is_never_called_for_settlement_and_public_summary(charge, monkeypatch):
     client, engine, _, _ = charge
     def forbidden_provider(*_):
         raise AssertionError("settlement or summary attempted a provider request")
@@ -510,9 +510,10 @@ def test_provider_is_never_called_and_new_routes_remain_unregistered(charge, mon
         finance.get_owned_adjustment_detail(db, 1, 7)
     settle(engine)
     summary(engine)
-    assert client.post("/bookings/1/change-confirm", json={}).status_code == 404
+    assert client.post("/bookings/1/change-confirm", json={}).status_code == 401
     assert client.post("/bookings/adjustments/1/pay", json={}).status_code == 404
-    assert client.get("/bookings/1/financial-summary").status_code == 404
+    assert client.get("/bookings/1/financial-summary").status_code == 401
+    assert client.get("/bookings/1/financial-summary", headers=headers()).status_code == 200
 
 
 def test_financial_reads_cannot_autoflush_staged_records(charge):

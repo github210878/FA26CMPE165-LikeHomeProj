@@ -215,6 +215,15 @@ amount, type, and status so a pending payment can be resumed after refresh.
 The reservation's `confirmed` status means a local reservation exists; the
 separate payment status determines whether the LikeHome payment step completed.
 
+### Reservation change API (US7.2)
+
+The feature branch registers authenticated confirmation, internal adjustment
+payment and financial-summary routes. See [the API integration report](US7.2_API_INTEGRATION.md)
+for request/response contracts, verification and the deployment boundary.
+**Development deployment is NOT READY:** Migration 004 remains unapplied and
+application MySQL session UTC configuration still requires verification.
+Do not run the updated stack against the existing development database yet.
+
 ### User sign up:
 
 - API: `/user/register`
