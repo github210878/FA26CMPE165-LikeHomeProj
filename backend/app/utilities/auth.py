@@ -82,11 +82,11 @@ def decode_access_token(
     mutate the database; account-state checks happen in get_current_user_id.
     """
 
-    if not JWT_SECRET_KEY:
-        raise RuntimeError("JWT_SECRET_KEY is not configured")
-
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise _authentication_error("Bearer authentication is required")
+
+    if not JWT_SECRET_KEY:
+        raise RuntimeError("JWT_SECRET_KEY is not configured")
 
     try:
         payload = jwt.decode(

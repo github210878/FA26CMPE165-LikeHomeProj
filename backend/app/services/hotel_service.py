@@ -21,6 +21,8 @@ from app.schemas.hotel_schema import (
     HotelSearchResponse,
     HotelSearchResult,
     HotelRate,
+    HotelDetailsRequest,
+    HotelDetailsResponse,
     HotelRevalidationRequest,
     HotelRevalidationResponse,
 )
@@ -46,6 +48,106 @@ def _extracted(rate: object, field: str) -> Decimal | None:
 
 def _cents(amount: Decimal) -> Decimal:
     return amount.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _detail_params(info: HotelDetailsRequest) -> dict:
+    return {
+        "q": info.q,
+        "property_token": info.property_token,
+        "check_in_date": info.check_in_date.isoformat(),
+        "check_out_date": info.check_out_date.isoformat(),
+        "adults": info.adults,
+        "children": info.children,
+        "currency": info.currency,
+        "gl": info.gl,
+        "hl": info.hl,
+    }
+
+
+def _property_from_details(response: object, property_token: str) -> dict | None:
+    if not isinstance(response, dict):
+        return None
+    if response.get("property_token") == property_token:
+        return response
+    properties = response.get("properties")
+    if not isinstance(properties, list):
+        return None
+    return next(
+        (
+            item
+            for item in properties
+            if isinstance(item, dict) and item.get("property_token") == property_token
+        ),
+        None,
+    )
+
+
+def _text_list(value: object) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    values = [text for item in value if (text := _optional_text(item))]
+    return values or None
+
+
+def _image_urls(value: object) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    urls = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        for key in ("original", "thumbnail"):
+            url = _optional_text(item.get(key))
+            if url:
+                urls.append(url)
+                break
+    return urls or None
+
+
+def get_hotel_details(info: HotelDetailsRequest) -> HotelDetailsResponse:
+    try:
+        raw_response = serpapi_client.search_google_hotels(_detail_params(info))
+    except SerpApiConfigError as exc:
+        raise HTTPException(status_code=500, detail="Hotel detail service is not configured") from exc
+    except SerpApiTimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Hotel detail service timed out") from exc
+    except (SerpApiRequestError, SerpApiResponseError) as exc:
+        raise HTTPException(status_code=502, detail="Hotel detail service is temporarily unavailable") from exc
+
+    property_data = _property_from_details(raw_response, info.property_token)
+    if property_data is None:
+        raise HTTPException(status_code=404, detail="Property was not found")
+
+    name = _optional_text(property_data.get("name"))
+    if not name or len(name) > 255:
+        raise HTTPException(status_code=502, detail="Hotel detail service returned an invalid property")
+
+    rating = _finite_number(property_data.get("overall_rating"))
+    if rating is not None and not 0 <= rating <= 5:
+        rating = None
+    reviews = property_data.get("reviews")
+    if isinstance(reviews, bool) or not isinstance(reviews, int) or reviews < 0:
+        reviews = None
+
+    return HotelDetailsResponse(
+        property_token=info.property_token,
+        name=name,
+        hotel_class=_optional_text(property_data.get("hotel_class")),
+        overall_rating=rating,
+        reviews=reviews,
+        amenities=_text_list(property_data.get("amenities")),
+        images=_image_urls(property_data.get("images")),
+        thumbnail=_thumbnail(property_data.get("images")),
+        link=_optional_text(property_data.get("link")),
+        gps_coordinates=property_data.get("gps_coordinates") if isinstance(property_data.get("gps_coordinates"), dict) else None,
+        description=_optional_text(property_data.get("description")),
+        address=_optional_text(property_data.get("address")),
+        phone=_optional_text(property_data.get("phone")),
+        check_in_time=_optional_text(property_data.get("check_in_time")),
+        check_out_time=_optional_text(property_data.get("check_out_time")),
+        rate_per_night=_rate(property_data.get("rate_per_night")),
+        total_rate=_rate(property_data.get("total_rate")),
+    )
 
 
 def revalidate_hotel(info: HotelRevalidationRequest) -> HotelRevalidationResponse:
@@ -254,6 +356,45 @@ def _to_hotel_result(raw_property: dict) -> HotelSearchResult:
         gps_coordinates=coordinates if isinstance(coordinates, dict) else None,
     )
 
+def _sort_hotels(
+    properties: list[HotelSearchResult],
+    sort_by: str,
+) -> list[HotelSearchResult]:
+    """Sort hotels while preserving original order for equal values."""
+
+    if sort_by == "recommended":
+        return properties
+
+    if sort_by == "price_low_to_high":
+        return sorted(
+            properties,
+            key=lambda hotel: (
+                hotel.price_per_night is None,
+                hotel.price_per_night
+                if hotel.price_per_night is not None else 0,
+            ),
+        )
+
+    if sort_by == "price_high_to_low":
+        return sorted(
+            properties,
+            key=lambda hotel: (
+                hotel.price_per_night is None,
+                -hotel.price_per_night
+                if hotel.price_per_night is not None else 0,
+            ),
+        )
+
+    if sort_by == "rating_high_to_low":
+        return sorted(
+            properties,
+            key=lambda hotel: (
+                hotel.rating is None,
+                -hotel.rating if hotel.rating is not None else 0,
+            ),
+        )
+
+    return properties
 
 def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchResponse:
     params = _build_serpapi_params(search_info)
@@ -285,6 +426,10 @@ def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchRe
     properties = [
         _to_hotel_result(item) for item in raw_properties if isinstance(item, dict)
     ]
+
+    # Sort hotel results based on the selected option
+    properties = _sort_hotels(properties, search_info.sort_by)
+
 
     # Cache the hotel data in the database
     try:

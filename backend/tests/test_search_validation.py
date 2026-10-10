@@ -35,6 +35,36 @@ def test_invalid_calendar_dates_are_rejected_before_serpapi(field, value, upstre
     upstream_search.assert_not_called()
 
 
+@pytest.mark.parametrize("query", ["", " ", "\t\n"])
+def test_blank_destination_is_rejected_before_serpapi(query, upstream_search):
+    response = client.get("/hotels/search", params={**VALID_PARAMS, "q": query})
+
+    assert response.status_code == 422
+    assert ["query", "q"] in [error["loc"] for error in response.json()["detail"]]
+    upstream_search.assert_not_called()
+
+
+def test_destination_is_trimmed_before_serpapi(upstream_search):
+    response = client.get(
+        "/hotels/search",
+        params={**VALID_PARAMS, "q": "  San Jose hotels  "},
+    )
+
+    assert response.status_code == 200
+    assert upstream_search.call_args.args[0]["q"] == "San Jose hotels"
+
+
+def test_destination_over_maximum_length_is_rejected_before_serpapi(upstream_search):
+    response = client.get(
+        "/hotels/search",
+        params={**VALID_PARAMS, "q": "a" * 256},
+    )
+
+    assert response.status_code == 422
+    assert ["query", "q"] in [error["loc"] for error in response.json()["detail"]]
+    upstream_search.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("overrides", "field", "message"),
     [

@@ -144,6 +144,20 @@ backend/
   children 0-20. Invalid inputs return HTTP 422 with the field and reason,
   before any SerpApi request is made.
 
+### Hotel property details
+
+- API: `GET /hotels/details` with `property_token`, `q`, `check_in_date`,
+  `check_out_date`, `adults`, `children`, `currency`, `gl`, and `hl` query
+  parameters.
+- The backend forwards the validated property token and stay context to
+  SerpApi, verifies that the returned property has the same token, and returns
+  normalized property details including name, rating, reviews, amenities,
+  images, location, contact information, and provider rate summaries.
+- A missing or mismatched property returns HTTP 404. Provider timeouts return
+  HTTP 504; provider/network failures return HTTP 502; missing configuration
+  returns HTTP 500. Provider secrets and unapproved raw fields are never
+  returned to the client.
+
 Run backend tests with `python -m pytest -q -p no:cacheprovider tests`.
 
 ### Hotel database upgrade

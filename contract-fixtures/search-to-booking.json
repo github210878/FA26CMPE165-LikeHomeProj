@@ -1,0 +1,60 @@
+{
+  "selection": {
+    "property_token": "property-123",
+    "q": "San Jose hotels",
+    "check_in_date": "2026-11-01",
+    "check_out_date": "2026-11-03",
+    "adults": 3,
+    "children": 0,
+    "currency": "USD",
+    "gl": "us",
+    "hl": "en",
+    "displayed_price_per_night": 150
+  },
+  "quote": {
+    "property_token": "property-123",
+    "hotel_name": "Hotel A",
+    "check_in_date": "2026-11-01",
+    "check_out_date": "2026-11-03",
+    "adults": 3,
+    "children": 0,
+    "currency": "USD",
+    "number_of_nights": 2,
+    "availability": "available",
+    "rate_rule": "lowest_eligible_provider_base_total",
+    "source": "Provider A",
+    "guest_capacity": 3,
+    "current_price_per_night": 165,
+    "provider_base_total": 330,
+    "provider_total_with_taxes_fees": 350,
+    "likehome_reservation_total": 346.5,
+    "likehome_payment_amount": 374.22,
+    "price_changed": true
+  },
+  "guest": {
+    "guest_full_name": "Person Example",
+    "guest_email": "person@example.com"
+  },
+  "booking_request": {
+    "hotel_token": "property-123",
+    "guest_full_name": "Person Example",
+    "guest_email": "person@example.com",
+    "q": "San Jose hotels",
+    "check_in_date": "2026-11-01",
+    "check_out_date": "2026-11-03",
+    "adults": 3,
+    "children": 0,
+    "currency": "USD",
+    "gl": "us",
+    "hl": "en",
+    "price_per_night": 165,
+    "accepted_payment_amount": 374.22
+  },
+  "booking_response": {
+    "user_id": 7,
+    "hotel_id": 1,
+    "room_type_id": 1,
+    "reservation_id": 1,
+    "payment_id": 1
+  }
+}
