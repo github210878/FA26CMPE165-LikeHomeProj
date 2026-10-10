@@ -5,11 +5,17 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.schemas.hotel_schema import (
     HotelSearchRequest, HotelSearchResponse,
+    HotelDetailsRequest, HotelDetailsResponse,
     HotelRevalidationRequest, HotelRevalidationResponse,
 )
 from app.services import hotel_service
 
 router = APIRouter(prefix="/hotels", tags=["Hotels"])
+
+
+@router.get("/details", response_model=HotelDetailsResponse)
+def hotel_details(info: Annotated[HotelDetailsRequest, Query()]):
+    return hotel_service.get_hotel_details(info)
 
 
 @router.post("/revalidate", response_model=HotelRevalidationResponse)

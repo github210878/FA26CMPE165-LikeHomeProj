@@ -113,6 +113,70 @@ class HotelSearchResponse(BaseModel):
     next_page_token: str | None = None
 
 
+class HotelDetailsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    property_token: str = Field(min_length=1, max_length=255)
+    q: str = Field(min_length=1, max_length=255)
+    check_in_date: date
+    check_out_date: date
+    adults: int = Field(default=2, ge=1, le=20)
+    children: int = Field(default=0, ge=0, le=20)
+    currency: Literal["USD"] = "USD"
+    gl: Literal["us"] = "us"
+    hl: Literal["en"] = "en"
+
+    @field_validator("property_token", "q")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A nonblank value is required")
+        return value
+
+    @field_validator("property_token")
+    @classmethod
+    def provider_token(cls, value: str) -> str:
+        if value.startswith(("legacy:", "partner:")):
+            raise ValueError("A SerpApi property token is required")
+        return value
+
+    @field_validator("adults", "children", mode="before")
+    @classmethod
+    def whole_guest_count(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("Guest counts must be whole numbers")
+        return value
+
+    @model_validator(mode="after")
+    def valid_stay(self) -> "HotelDetailsRequest":
+        if self.check_in_date < date.today():
+            raise ValueError("Check-in date cannot be in the past")
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("Check-out date must be after check-in date")
+        return self
+
+
+class HotelDetailsResponse(BaseModel):
+    property_token: str
+    name: str
+    hotel_class: str | None = None
+    overall_rating: float | None = None
+    reviews: int | None = None
+    amenities: list[str] | None = None
+    images: list[str] | None = None
+    thumbnail: str | None = None
+    link: str | None = None
+    gps_coordinates: dict | None = None
+    description: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    check_in_time: str | None = None
+    check_out_time: str | None = None
+    rate_per_night: HotelRate | None = None
+    total_rate: HotelRate | None = None
+
+
 class HotelRevalidationRequest(BaseModel):
     """Property-only selection and the stay context used for the search."""
 
