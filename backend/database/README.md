@@ -77,9 +77,10 @@ Any other validation, deadlock or transaction failure also rolls back all writes
 Confirmation and adjustment settlement remain absent from the router. Backend
 cancellation compatibility is now implemented; activating the full customer
 workflow and frontend integration remain separate authorized increments.
-Existing public booking APIs remain unchanged. Tests use mocked providers and
+Existing public booking APIs remain unchanged. The offline tests use mocked providers and
 isolated SQLite; threaded tests simulate User-row waits with a Python mutex around
-real Sessions. No real MySQL/InnoDB concurrency verification has occurred.
+real Sessions. The separate [live verification report](US7.2_MIGRATION_004_VERIFICATION.md)
+records bounded MySQL/InnoDB SQL-lock and service-race tests.
 
 ## Internal adjustment payment and summaries (unregistered)
 
@@ -125,8 +126,8 @@ refund is inferred. Ledger amounts are validated against immutable change events
 Cancelled reservations can now be summarized when cancellation charge and ledger
 treatment are consistent. Incomplete legacy cancellations still return a safe
 conflict. The existing stay-obligation field remains a historical stay cost, not
-a cancellation balance. Migration 004 remains unapplied to development MySQL,
-and the SQLite/mutex test limitation above applies.
+a cancellation balance. Migration 004 remains unapplied to development MySQL.
+The offline suite uses SQLite/mutexes; bounded live results are in the verification report.
 
 ## Atomic cancellation reconciliation (3B.3B)
 
@@ -177,8 +178,9 @@ altered amounts, paid-history rewrites, collectible charges after cancellation,
 or missing/mismatched cancellation payments. Public cancellation responses keep
 their fields and numeric types. Confirmation, adjustment settlement, and summary
 routes remain unregistered. No frontend, JWT, provider, migration or real-database
-changes are part of this increment. Contention tests use isolated SQLite with
-explicitly simulated row waits; real MySQL/InnoDB has not been verified.
+changes are part of that implementation increment. Its contention tests use isolated
+SQLite with explicitly simulated row waits. The later disposable verification
+also exercises real MySQL/InnoDB waits and focused application-service races.
 
 Two small additions keep reconciliation within the adjustment table:
 
@@ -273,9 +275,24 @@ connections. Connection-wide UTC initialization is future integration work.
 
 ## Verification
 
-First provision an explicitly approved disposable MySQL 5.7 database. Validate
-both fresh installation and upgrading a copy with existing reservations/payments.
-No such database was provisioned or contacted in this increment.
+The [2026-10-10 verification report and runbook](US7.2_MIGRATION_004_VERIFICATION.md)
+records 43 passing live MySQL 5.7.44 tests and 734 passing offline backend tests.
+The isolated database-readiness gate is READY; development migration and endpoint
+activation remain separate steps. No development database was contacted.
+
+The opt-in runner creates and removes its own labeled amd64 container, uses tmpfs
+data and a random loopback-only port, verifies identity before DDL, and rejects
+connections outside that container. It accepts no application DB URL. From the
+repository root, with Docker Desktop running:
+
+```bash
+backend/.venv/bin/python backend/database/verification/run_mysql57_verification.py \
+  --disposable --evidence /private/tmp/likehome-us72-mysql57-evidence.json
+```
+
+This validates both the repository-backed pre-004 upgrade and the fresh SQL
+installation, with synthetic records only. The normal backend suite remains
+`cd backend && .venv/bin/python -m pytest -q -p no:cacheprovider tests`.
 
 After manual application, inspect SHOW CREATE TABLE/SHOW INDEX and verify:
 
@@ -305,6 +322,8 @@ users, reservations, payments and rooms. Existing account deletion is soft delet
 
 ## Validation boundary
 
-Automated schema tests use isolated SQLite with FK enforcement, metadata checks
-and MySQL-dialect DDL compilation. No actual development MySQL connection,
-migration execution, provider request or financial transaction is authorized.
+The normal schema tests use isolated SQLite with FK enforcement, metadata checks
+and MySQL-dialect DDL compilation. The separate Docker-owned runner verifies the
+live MySQL contract and skips unless its explicit disposable context is supplied.
+Development MySQL connections/migrations, real provider requests and external
+financial transactions are outside this verification's authorization.
