@@ -11,6 +11,7 @@ import { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote } fr
 import type { CheckoutSelection } from "@/lib/checkout-selection";
 import { checkoutPriceBreakdown } from "@/lib/checkout-pricing";
 import { normalizedGuestInformation, validateGuestInformation, type GuestInformation, type GuestInformationErrors } from "@/lib/guest-information";
+import { CheckoutSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
 type Phase = "loading" | "ready" | "unavailable" | "provider-error" | "error" |
   "submitting" | "conflict" | "booking-error" | "success";
@@ -129,7 +130,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   }
 
   if (sessionStatus === "restoring") {
-    return <p role="status" className="mt-8 text-slate-700">Checking your session…</p>;
+    return <SessionLoadingSkeleton />;
   }
   if (sessionStatus === "unauthenticated") {
     return <p role="status" className="mt-8 text-slate-700">Taking you to sign in…</p>;
@@ -141,9 +142,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
     </div>;
   }
   if (phase === "loading" || phase === "conflict") {
-    return <p role="status" className="mt-8 text-slate-700">
-      {phase === "conflict" ? "The quote changed. Checking the current rate…" : "Checking the current rate…"}
-    </p>;
+    return <CheckoutSkeleton label={phase === "conflict" ? "The quote changed. Checking the current rate" : undefined} />;
   }
   if (phase === "unavailable") {
     return <div role="alert" className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950">

@@ -14,6 +14,7 @@ import { filterHotels, getAmenityOptions, type HotelFilterValues } from "@/lib/h
 import { HOTEL_SORT_OPTIONS, sortHotels, type HotelSort } from "@/lib/hotel-sort";
 import SearchForm from "./search-form";
 import RecentSearches from "./recent-searches";
+import { SearchResultsSkeleton } from "@/components/LoadingSkeletons";
 
 type SearchStatus = "idle" | "loading" | "error" | "success";
 
@@ -147,7 +148,7 @@ export default function SearchExperience() {
       <div className="mt-12 border-t border-slate-200 pt-8" aria-live="polite">
         <h2 className="text-xl font-semibold text-slate-950">Available stays</h2>
         {status === "idle" && <p className="mt-2 text-sm leading-6 text-slate-600">Enter a destination and dates to find available stays.</p>}
-        {status === "loading" && <p className="mt-2 text-sm leading-6 text-slate-600">Searching for stays…</p>}
+        {status === "loading" && <SearchResultsSkeleton />}
         {error && (
           <div className="mt-4">
             <ErrorState
