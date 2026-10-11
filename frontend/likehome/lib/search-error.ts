@@ -15,6 +15,14 @@ export function searchError(error: unknown): SearchError {
     };
   }
 
+  if (error instanceof ApiError && error.status === 500) {
+    return {
+      title: "Hotel search setup is incomplete",
+      message: "The hotel search service is not configured on this server. Contact support before trying again.",
+      retryable: false,
+    };
+  }
+
   if (error instanceof ApiError && error.status === 504) {
     return {
       title: "The search took too long",

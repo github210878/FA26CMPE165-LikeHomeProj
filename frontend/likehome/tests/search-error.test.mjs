@@ -19,10 +19,19 @@ test("timeouts and network failures offer relevant recovery instructions", () =>
 });
 
 test("service failures and unexpected errors never expose internal details", () => {
-  for (const error of [new ApiError(502), new ApiError(500), new Error("secret API key"), null]) {
+  for (const error of [new ApiError(502), new Error("secret API key"), null]) {
     const result = searchError(error);
     assert.equal(result.retryable, true);
     assert.equal(result.title, "Unable to load stays");
     assert.doesNotMatch(result.message, /secret|API key|502|500/);
   }
+});
+
+test("missing hotel-search configuration is not presented as a transient outage", () => {
+  const result = searchError(new ApiError(500));
+
+  assert.equal(result.title, "Hotel search setup is incomplete");
+  assert.equal(result.retryable, false);
+  assert.match(result.message, /not configured/);
+  assert.doesNotMatch(result.message, /API key|secret|500/);
 });

@@ -18,6 +18,16 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+
+@app.get("/", tags=["System"])
+def root_status():
+    return {
+        "status": "ok",
+        "service": Config.APP_NAME,
+        "docs": "/docs",
+    }
+
+
 app.include_router(user_router)
 app.include_router(hotel_router)
 app.include_router(booking_router)

@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.main import app
 from app.schemas.hotel_schema import HotelSearchRequest
 from app.utilities import serpapi_client
+from app.utilities.serpapi_client import SerpApiConfigError
 
 client = TestClient(app)
 VALID_PARAMS = {
@@ -128,3 +129,17 @@ def test_valid_boundary_inputs_keep_existing_request_and_response(overrides, ups
 def test_direct_model_rejects_boolean_guest_counts(field):
     with pytest.raises(ValidationError):
         HotelSearchRequest(**VALID_PARAMS, **{field: True})
+
+
+def test_missing_provider_configuration_returns_safe_http_error(monkeypatch):
+    monkeypatch.setattr(
+        serpapi_client,
+        "search_google_hotels",
+        Mock(side_effect=SerpApiConfigError("private API key detail")),
+    )
+
+    response = client.get("/hotels/search", params=VALID_PARAMS)
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Hotel search service is not configured"}
+    assert "private" not in response.text
