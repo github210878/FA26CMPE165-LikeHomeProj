@@ -188,6 +188,44 @@ async function submitSearch(form, values) {
   await new Promise(setImmediate);
 }
 
+test("filtering preserves the search form and destination/date context", async () => {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+    return new Response(JSON.stringify({
+      search_query: "San Jose hotels",
+      check_in_date: search.checkIn,
+      check_out_date: search.checkOut,
+      result_count: hotels.length,
+      properties: hotels,
+    }));
+  };
+
+  const harness = searchHarness();
+  await submitSearch(harness.render().form, search);
+  let view = harness.render();
+  const formKey = view.form.key;
+  const initialValues = view.form.props.initialValues;
+  const checkoutHref = view.cards[0].props.checkoutHref;
+
+  view.price.props.onChange({ target: { value: "150" } });
+  view = harness.render();
+  view.checkbox("pool").props.onChange({ target: { checked: true } });
+  view = harness.render();
+
+  assert.equal(view.form.key, formKey);
+  assert.equal(view.form.props.initialValues, initialValues);
+  assert.match(view.html, /San Jose hotels/);
+  const selectedStay = parseCheckoutSelection(Object.fromEntries(
+    new URL(view.cards[0].props.checkoutHref, "https://likehome.test").searchParams,
+  ));
+  assert.equal(selectedStay.q, "San Jose hotels");
+  assert.equal(selectedStay.check_in_date, search.checkIn);
+  assert.equal(selectedStay.check_out_date, search.checkOut);
+  assert.ok(checkoutHref);
+  assert.equal(calls.length, 1);
+});
+
 test("retry repeats the failed search once, stays disabled while pending, and clears on success", async () => {
   const calls = [];
   let resolveRetry;
