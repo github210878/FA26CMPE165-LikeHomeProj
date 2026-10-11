@@ -9,6 +9,7 @@ import type { BookingDetailItem, PaymentResponse } from "@/lib/api-types";
 import { parseReservationId } from "@/lib/booking-confirmation";
 import { getBookingDetails, getMyPayments } from "@/lib/bookings";
 import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
+import { BookingDetailsSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
 type DetailState =
   | { kind: "loading"; key: string }
@@ -56,7 +57,7 @@ export default function BookingConfirmationExperience({ reservationId }: { reser
   }, [status, id, key, invalidateSession, router]);
 
   if (status === "restoring") {
-    return <p role="status" className="mt-8 text-slate-700">Checking your session…</p>;
+    return <SessionLoadingSkeleton />;
   }
   if (status === "unauthenticated") {
     return <p role="status" className="mt-8 text-slate-700">Taking you to sign in…</p>;
@@ -64,7 +65,7 @@ export default function BookingConfirmationExperience({ reservationId }: { reser
 
   const current = id === null ? { kind: "not-found" as const } : detail.key === key ? detail : { kind: "loading" as const };
   if (current.kind === "loading") {
-    return <p role="status" className="mt-8 text-slate-700">Loading booking details…</p>;
+    return <BookingDetailsSkeleton />;
   }
 
   return <div className="mt-8 space-y-6">

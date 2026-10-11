@@ -134,6 +134,7 @@ function searchHarness() {
     react: hooks,
     "@/components/HotelResultCard": { default: HotelResultCard },
     "@/components/HotelFilters": { default: HotelFilters },
+    "@/components/LoadingSkeletons": { SearchResultsSkeleton: () => null },
     "@/components/ErrorState": { default: ErrorState },
     "@/lib/search-error": { searchError },
     "@/lib/api": { ApiError },

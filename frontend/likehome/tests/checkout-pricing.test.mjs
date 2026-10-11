@@ -90,6 +90,7 @@ function checkoutHarness(initialQuote) {
     "next/link": { default: ({ children, href, className }) => createElement("a", { href, className }, children) },
     "next/navigation": { useRouter: () => ({ replace: (href) => navigation.push(href) }) },
     "@/components/AuthProvider": { useAuth: () => ({ status: "authenticated", invalidateSession: () => {} }) },
+    "@/components/LoadingSkeletons": { CheckoutSkeleton: () => null, SessionLoadingSkeleton: () => null },
     "@/lib/api": { ApiError },
     "@/lib/payment": { paymentHref },
     "@/lib/checkout": { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote },

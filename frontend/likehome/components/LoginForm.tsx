@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { loginErrorMessage } from "@/lib/auth";
+import { SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
 export default function LoginForm({ returnTo }: { returnTo?: string | null }) {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function LoginForm({ returnTo }: { returnTo?: string | null }) {
   }
 
   if (status === "restoring") {
-    return <p role="status" className="mt-8 text-sm text-slate-600">Checking your session…</p>;
+    return <SessionLoadingSkeleton />;
   }
 
   if (status === "authenticated") {

@@ -9,6 +9,7 @@ import type { BookingListItem, BookingListResponse, PaymentResponse } from "@/li
 import { canCancelBooking, cancellationErrorMessage, createCancellationSubmissionGuard, keepBooking, requestCancellation, startCancellation, type CancellationPhase } from "@/lib/booking-cancellation";
 import { cancelBookingAndRefresh, getBookingDetails, getMyBookings, getMyPayments } from "@/lib/bookings";
 import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
+import { BookingDetailsSkeleton, BookingListSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
 type LoadState =
   | { kind: "loading" }
@@ -46,7 +47,7 @@ function BookingDetailPanel({ reservationId }: { reservationId: number }) {
   }, [reservationId, attempt, invalidateSession, router]);
 
   if (detail.kind === "loading") {
-    return <p role="status" className="mt-4 text-sm text-slate-600">Loading booking details…</p>;
+    return <BookingDetailsSkeleton />;
   }
   if (detail.kind === "not-found") {
     return <p className="mt-4 text-sm text-slate-700">This booking is no longer available.</p>;
@@ -171,7 +172,7 @@ export default function MyBookingsExperience() {
   }
 
   if (status === "restoring") {
-    return <p role="status" className="mt-8 text-slate-600">Checking your session…</p>;
+    return <SessionLoadingSkeleton />;
   }
   if (status === "unauthenticated") {
     return <p role="status" className="mt-8 text-slate-600">Redirecting to sign in…</p>;
@@ -183,7 +184,7 @@ export default function MyBookingsExperience() {
     </p>
   );
   if (load.kind === "loading") {
-    return <>{notice}<p role="status" className="mt-8 text-slate-600">Loading your bookings…</p></>;
+    return <>{notice}<BookingListSkeleton /></>;
   }
   if (load.kind === "error") {
     return (

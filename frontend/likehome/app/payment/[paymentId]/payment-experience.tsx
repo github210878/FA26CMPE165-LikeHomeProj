@@ -9,6 +9,7 @@ import type { PaymentResponse } from "@/lib/api-types";
 import { parseReservationId } from "@/lib/booking-confirmation";
 import { getPaymentDetails, payBookingPayment } from "@/lib/bookings";
 import { createBookingSubmissionGuard } from "@/lib/checkout";
+import { PaymentSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
 type DetailState =
   | { kind: "loading" }
@@ -77,9 +78,9 @@ export default function PaymentExperience({ paymentId }: { paymentId: string }) 
     }
   }
 
-  if (status !== "authenticated") return <p role="status" className="mt-8 text-slate-700">Checking your session…</p>;
+  if (status !== "authenticated") return <SessionLoadingSkeleton />;
   if (id === null || detail.kind === "not-found") return <p role="alert" className="mt-8 text-slate-800">This payment could not be found.</p>;
-  if (detail.kind === "loading") return <p role="status" className="mt-8 text-slate-700">Loading payment…</p>;
+  if (detail.kind === "loading") return <PaymentSkeleton />;
   if (detail.kind === "error") return <div role="alert" className="mt-8 rounded-lg border border-red-200 bg-red-50 p-5 text-red-900">
     <p>We could not load this payment. Your reservation may still be available.</p>
     <button type="button" onClick={() => { setDetail({ kind: "loading" }); setAttempt((value) => value + 1); }} className="mt-3 font-medium text-teal-700 underline">Retry</button>
