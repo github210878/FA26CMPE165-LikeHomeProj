@@ -157,6 +157,17 @@ class HotelDetailsRequest(BaseModel):
         return self
 
 
+class HotelCancellationPolicy(BaseModel):
+    """Cancellation terms for one provider offer, not the whole property."""
+
+    source: str
+    free_cancellation: bool
+    free_cancellation_until_date: str | None = None
+    free_cancellation_until_time: str | None = None
+    rate_per_night: HotelRate | None = None
+    total_rate: HotelRate | None = None
+
+
 class HotelDetailsResponse(BaseModel):
     property_token: str
     name: str
@@ -175,6 +186,7 @@ class HotelDetailsResponse(BaseModel):
     check_out_time: str | None = None
     rate_per_night: HotelRate | None = None
     total_rate: HotelRate | None = None
+    cancellation_policies: list[HotelCancellationPolicy] | None = None
 
 
 class HotelRevalidationRequest(BaseModel):

@@ -153,6 +153,21 @@ backend/
   SerpApi, verifies that the returned property has the same token, and returns
   normalized property details including name, rating, reviews, amenities,
   images, location, contact information, and provider rate summaries.
+- For 4.5.3, `images` prefers SerpApi's `original_image`, then legacy `original`,
+  then `thumbnail`. Only HTTP(S) image URLs are kept. Duplicate image URLs and
+  amenities are removed while preserving order. `thumbnail` falls back to the
+  property's thumbnail or first mapped image when image thumbnails are absent.
+- `overall_rating` is a finite number from 0 to 5. `hotel_class` preserves the
+  provider's text, or formats a numeric class from 1 to 5 as `4-star hotel`.
+  Missing or malformed optional information is returned as `null`.
+- Optional `cancellation_policies` maps explicit boolean cancellation flags from
+  `prices`. Each entry retains its `source`, nightly/stay rate summaries,
+  `free_cancellation`, and supplied cancellation deadline text. Terms belong to
+  that provider offer, not every rate at the hotel. Missing terms are unknown,
+  and no year, time zone, cancellation fee, or guarantee is inferred. These
+  provider terms do not change LikeHome's booking/cancellation fee calculations.
+- Field reference: [SerpApi property details](https://serpapi.com/google-hotels-property-details).
+  No new environment variables or database changes are required.
 - A missing or mismatched property returns HTTP 404. Provider timeouts return
   HTTP 504; provider/network failures return HTTP 502; missing configuration
   returns HTTP 500. Provider secrets and unapproved raw fields are never

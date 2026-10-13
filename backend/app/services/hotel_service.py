@@ -1,6 +1,7 @@
 import math
 import logging
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -23,6 +24,7 @@ from app.schemas.hotel_schema import (
     HotelRate,
     HotelDetailsRequest,
     HotelDetailsResponse,
+    HotelCancellationPolicy,
     HotelRevalidationRequest,
     HotelRevalidationResponse,
 )
@@ -85,8 +87,21 @@ def _property_from_details(response: object, property_token: str) -> dict | None
 def _text_list(value: object) -> list[str] | None:
     if not isinstance(value, list):
         return None
-    values = [text for item in value if (text := _optional_text(item))]
+    values = list(dict.fromkeys(text for item in value if (text := _optional_text(item))))
     return values or None
+
+
+def _image_url(value: object) -> str | None:
+    url = _optional_text(value)
+    if not url or any(char.isspace() or ord(char) < 32 for char in url):
+        return None
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname:
+            return None
+    except ValueError:
+        return None
+    return url
 
 
 def _image_urls(value: object) -> list[str] | None:
@@ -96,12 +111,67 @@ def _image_urls(value: object) -> list[str] | None:
     for item in value:
         if not isinstance(item, dict):
             continue
-        for key in ("original", "thumbnail"):
-            url = _optional_text(item.get(key))
+        for key in ("original_image", "original", "thumbnail"):
+            url = _image_url(item.get(key))
             if url:
-                urls.append(url)
+                if url not in urls:
+                    urls.append(url)
                 break
     return urls or None
+
+
+def _detail_thumbnail(property_data: dict, images: list[str] | None) -> str | None:
+    raw_images = property_data.get("images")
+    if isinstance(raw_images, list):
+        for item in raw_images:
+            if isinstance(item, dict) and (url := _image_url(item.get("thumbnail"))):
+                return url
+    return _image_url(property_data.get("thumbnail")) or (images[0] if images else None)
+
+
+def _detail_hotel_class(property_data: dict) -> str | None:
+    value = property_data.get("hotel_class")
+    if text := _optional_text(value):
+        return text
+    for stars in (value, property_data.get("extracted_hotel_class")):
+        if not isinstance(stars, bool) and isinstance(stars, int) and 1 <= stars <= 5:
+            return f"{stars}-star hotel"
+    return None
+
+
+def _detail_rate(value: object) -> HotelRate | None:
+    if not isinstance(value, dict):
+        return None
+    fields = {
+        "lowest": _optional_text(value.get("lowest")),
+        "before_taxes_fees": _optional_text(value.get("before_taxes_fees")),
+    }
+    for key in ("extracted_lowest", "extracted_before_taxes_fees"):
+        amount = _finite_number(value.get(key))
+        fields[key] = amount if amount is not None and amount >= 0 else None
+    return HotelRate(**fields) if any(item is not None for item in fields.values()) else None
+
+
+def _cancellation_policies(value: object) -> list[HotelCancellationPolicy] | None:
+    if not isinstance(value, list):
+        return None
+    policies = []
+    for offer in value:
+        if not isinstance(offer, dict):
+            continue
+        source = _optional_text(offer.get("source"))
+        free = offer.get("free_cancellation")
+        if not source or not isinstance(free, bool):
+            continue
+        policies.append(HotelCancellationPolicy(
+            source=source,
+            free_cancellation=free,
+            free_cancellation_until_date=_optional_text(offer.get("free_cancellation_until_date")) if free else None,
+            free_cancellation_until_time=_optional_text(offer.get("free_cancellation_until_time")) if free else None,
+            rate_per_night=_detail_rate(offer.get("rate_per_night")),
+            total_rate=_detail_rate(offer.get("total_rate")),
+        ))
+    return policies or None
 
 
 def get_hotel_details(info: HotelDetailsRequest) -> HotelDetailsResponse:
@@ -129,15 +199,16 @@ def get_hotel_details(info: HotelDetailsRequest) -> HotelDetailsResponse:
     if isinstance(reviews, bool) or not isinstance(reviews, int) or reviews < 0:
         reviews = None
 
+    images = _image_urls(property_data.get("images"))
     return HotelDetailsResponse(
         property_token=info.property_token,
         name=name,
-        hotel_class=_optional_text(property_data.get("hotel_class")),
+        hotel_class=_detail_hotel_class(property_data),
         overall_rating=rating,
         reviews=reviews,
         amenities=_text_list(property_data.get("amenities")),
-        images=_image_urls(property_data.get("images")),
-        thumbnail=_thumbnail(property_data.get("images")),
+        images=images,
+        thumbnail=_detail_thumbnail(property_data, images),
         link=_optional_text(property_data.get("link")),
         gps_coordinates=property_data.get("gps_coordinates") if isinstance(property_data.get("gps_coordinates"), dict) else None,
         description=_optional_text(property_data.get("description")),
@@ -145,8 +216,9 @@ def get_hotel_details(info: HotelDetailsRequest) -> HotelDetailsResponse:
         phone=_optional_text(property_data.get("phone")),
         check_in_time=_optional_text(property_data.get("check_in_time")),
         check_out_time=_optional_text(property_data.get("check_out_time")),
-        rate_per_night=_rate(property_data.get("rate_per_night")),
-        total_rate=_rate(property_data.get("total_rate")),
+        rate_per_night=_detail_rate(property_data.get("rate_per_night")),
+        total_rate=_detail_rate(property_data.get("total_rate")),
+        cancellation_policies=_cancellation_policies(property_data.get("prices")),
     )
 
 
