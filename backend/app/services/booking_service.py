@@ -26,12 +26,16 @@ def _money(value: Decimal) -> Decimal:
     return value.quantize(MONEY_CENT, rounding=ROUND_HALF_UP)
 
 
-def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> BookingResponse:
+def create_booking(
+    db: Session, booking_info: BookingRequest, user_id: int
+) -> BookingResponse:
     """Recheck the accepted property quote before one atomic local booking write."""
     try:
         nights = (booking_info.check_out_date - booking_info.check_in_date).days
         if nights <= 0:
-            raise HTTPException(status_code=422, detail="Check-out must be after check-in")
+            raise HTTPException(
+                status_code=422, detail="Check-out must be after check-in"
+            )
 
         quote = hotel_service.revalidate_hotel(
             HotelRevalidationRequest(
@@ -50,12 +54,22 @@ def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> B
         payment_amount = _money(Decimal(str(quote.likehome_payment_amount)))
         if (
             _money(Decimal(str(booking_info.price_per_night))) != nightly_price
-            or _money(Decimal(str(booking_info.accepted_payment_amount))) != payment_amount
+            or _money(Decimal(str(booking_info.accepted_payment_amount)))
+            != payment_amount
         ):
-            raise HTTPException(status_code=409, detail="Rate changed; revalidate and review the current quote")
+            raise HTTPException(
+                status_code=409,
+                detail="Rate changed; revalidate and review the current quote",
+            )
         total_price = Decimal(str(quote.likehome_reservation_total))
-        if nightly_price > MAX_MONEY or total_price > MAX_MONEY or payment_amount > MAX_MONEY:
-            raise HTTPException(status_code=422, detail="Booking amount exceeds supported range")
+        if (
+            nightly_price > MAX_MONEY
+            or total_price > MAX_MONEY
+            or payment_amount > MAX_MONEY
+        ):
+            raise HTTPException(
+                status_code=422, detail="Booking amount exceeds supported range"
+            )
 
         # Authentication's earlier plain SELECT may have established an old
         # REPEATABLE READ snapshot. End that read-only transaction before the
@@ -132,7 +146,9 @@ def create_booking(db: Session, booking_info: BookingRequest, user_id: int) -> B
         raise
     except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create reservation") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to create reservation"
+        ) from exc
 
 
 def get_all_booking_by_user_id(db: Session, user_id: int):
@@ -154,7 +170,9 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
 def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentResponse:
     """Mark one owned booking payment paid inside LikeHome; no external charge occurs."""
     try:
-        reservation_id = booking_dao.get_owned_payment_reservation_id(db, payment_id, user_id)
+        reservation_id = booking_dao.get_owned_payment_reservation_id(
+            db, payment_id, user_id
+        )
         if reservation_id is None:
             raise HTTPException(status_code=404, detail="Payment not found")
         # Authentication and ownership reads may have opened a REPEATABLE READ
@@ -172,10 +190,15 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
             raise HTTPException(status_code=409, detail="Payment cannot be completed")
         if payment.payment_status == "pending":
             if reservation.status != "confirmed":
-                raise HTTPException(status_code=409, detail="Payment cannot be completed")
+                raise HTTPException(
+                    status_code=409, detail="Payment cannot be completed"
+                )
             payment.payment_status = "paid"
             result = PaymentResponse(**booking_dao.payment_result(payment))
             db.commit()
+            booking_dao.add_reward_points_to_user(
+                db, user_id, points=payment.amount
+            )  # Add reward points for the booking payment
             return result
         return PaymentResponse(**booking_dao.payment_result(payment))
     except HTTPException:
@@ -212,7 +235,9 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
 
         booking_payment = booking_payments[0]
         if booking_payment.payment_status not in ("pending", "paid"):
-            raise HTTPException(status_code=409, detail="Reservation payment state is ambiguous")
+            raise HTTPException(
+                status_code=409, detail="Reservation payment state is ambiguous"
+            )
         reservation.status = "cancelled"
         if booking_payment.payment_status == "paid":
             booking_payment.payment_status = "refunded"
@@ -234,10 +259,15 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
             cancellation_payment_status=cancellation_payment.payment_status,
         )
         db.commit()
+        booking_dao.add_reward_points_to_user(
+            db, user_id, points=0 - cancellation_payment.amount
+        )
         return response
     except HTTPException:
         db.rollback()
         raise
     except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to cancel reservation") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to cancel reservation"
+        ) from exc
