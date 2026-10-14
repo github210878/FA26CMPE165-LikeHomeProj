@@ -259,9 +259,6 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
             cancellation_payment_status=cancellation_payment.payment_status,
         )
         db.commit()
-        booking_dao.add_reward_points_to_user(
-            db, user_id, points=0 - cancellation_payment.amount
-        )
         return response
     except HTTPException:
         db.rollback()
