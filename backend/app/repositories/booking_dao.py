@@ -1,4 +1,5 @@
 from datetime import date
+from http.client import HTTPException
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -43,9 +44,7 @@ def is_hotel_in_db(db: Session, target_hotel: Hotel):
     if not target_hotel.hotel_token:
         raise ValueError("hotel_token is required to look up a hotel")
     hotel = (
-        db.query(Hotel)
-        .filter(Hotel.hotel_token == target_hotel.hotel_token)
-        .first()
+        db.query(Hotel).filter(Hotel.hotel_token == target_hotel.hotel_token).first()
     )
     if hotel is not None:
         return hotel.hotel_id
@@ -237,7 +236,9 @@ def get_owned_payment_reservation_id(db: Session, payment_id: int, user_id: int)
 def lock_owned_reservation(db: Session, reservation_id: int, user_id: int):
     return (
         db.query(Reservation)
-        .filter(Reservation.reservation_id == reservation_id, Reservation.user_id == user_id)
+        .filter(
+            Reservation.reservation_id == reservation_id, Reservation.user_id == user_id
+        )
         .with_for_update()
         .first()
     )
@@ -246,7 +247,9 @@ def lock_owned_reservation(db: Session, reservation_id: int, user_id: int):
 def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
     return (
         db.query(Payment)
-        .filter(Payment.payment_id == payment_id, Payment.reservation_id == reservation_id)
+        .filter(
+            Payment.payment_id == payment_id, Payment.reservation_id == reservation_id
+        )
         .with_for_update()
         .first()
     )
@@ -293,3 +296,20 @@ def get_payments_for_cancellation(db: Session, reservation_id: int):
         .with_for_update()
         .all()
     )
+
+
+def add_reward_points_to_user(db: Session, user_id: int, points: int):
+    """Add reward points to the user's account."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    try:
+        if user:
+            user.reward_points += points
+            db.commit()
+            db.refresh(user)
+            return user
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail="Failed to add reward points"
+        ) from exc
+    return None
