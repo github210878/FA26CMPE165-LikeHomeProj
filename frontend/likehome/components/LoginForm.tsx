@@ -47,20 +47,19 @@ export default function LoginForm({ returnTo }: { returnTo?: string | null }) {
         <label htmlFor="login-email" className="block text-sm font-medium text-slate-900">Email address</label>
         <input id="login-email" name="email" type="email" autoComplete="email" required disabled={submitting} value={email}
           onChange={(event) => { setEmail(event.target.value); setError(""); }}
-          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-950" />
+          className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-950" />
       </div>
       <div>
         <label htmlFor="login-password" className="block text-sm font-medium text-slate-900">Password</label>
         <input id="login-password" name="password" type="password" autoComplete="current-password" required disabled={submitting} value={password}
           onChange={(event) => { setPassword(event.target.value); setError(""); }}
-          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-950" />
+          className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-950" />
       </div>
       <button type="submit" disabled={submitting}
-        className="min-h-12 w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
+        className="min-h-12 w-full rounded-full bg-teal-700 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
         {submitting ? "Signing in…" : "Sign in"}
       </button>
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
-      <p className="text-sm text-slate-600">Don&apos;t have an account? <Link href="/signup" className="font-medium text-teal-700 underline">Sign up</Link></p>
     </form>
   );
 }

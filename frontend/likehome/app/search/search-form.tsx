@@ -17,17 +17,19 @@ function readForm(form: HTMLFormElement): SearchValues {
 }
 
 function inputClass(invalid: boolean) {
-  return `min-h-11 rounded-md border px-3 font-normal ${invalid ? "border-red-600" : "border-slate-300"}`;
+  return `min-h-12 w-full min-w-0 rounded-xl border px-3 font-normal ${invalid ? "border-red-600" : "border-slate-300"}`;
 }
 
 export default function SearchForm({
   onSearch,
   isLoading,
   initialValues,
+  compact = false,
 }: {
   onSearch: (values: SearchValues) => void;
   isLoading: boolean;
   initialValues?: SearchValues;
+  compact?: boolean;
 }) {
   const [errors, setErrors] = useState<SearchFormErrors>(() => initialValues ? validateSearchValues(initialValues) : {});
   const [submitted, setSubmitted] = useState(Boolean(initialValues));
@@ -61,9 +63,9 @@ export default function SearchForm({
       noValidate
       onSubmit={handleSubmit}
       onChange={handleChange}
-      className="mt-8 grid max-w-3xl gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-2 sm:p-6"
+      className={compact ? "home-search" : "mt-6 grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-900/5 sm:grid-cols-2 sm:p-7 lg:grid-cols-4"}
     >
-      <div className="grid gap-2 text-sm font-medium text-slate-800 sm:col-span-2">
+      <div className={`grid content-start gap-2 text-sm font-medium text-slate-800 ${compact ? "col-span-2 lg:col-span-1" : "sm:col-span-2 lg:col-span-4"}`}>
         <label htmlFor="destination">Destination</label>
         <input
           id="destination"
@@ -78,7 +80,7 @@ export default function SearchForm({
         />
         {errors.destination && <p id="destination-error" className="text-red-700">{errors.destination}</p>}
       </div>
-      <div className="grid gap-2 text-sm font-medium text-slate-800">
+      <div className="grid content-start gap-2 text-sm font-medium text-slate-800">
         <label htmlFor="checkIn">Check-in</label>
         <input
           id="checkIn"
@@ -92,7 +94,7 @@ export default function SearchForm({
         />
         {errors.checkIn && <p id="checkIn-error" className="text-red-700">{errors.checkIn}</p>}
       </div>
-      <div className="grid gap-2 text-sm font-medium text-slate-800">
+      <div className="grid content-start gap-2 text-sm font-medium text-slate-800">
         <label htmlFor="checkOut">Check-out</label>
         <input
           id="checkOut"
@@ -106,7 +108,7 @@ export default function SearchForm({
         />
         {errors.checkOut && <p id="checkOut-error" className="text-red-700">{errors.checkOut}</p>}
       </div>
-      <div className="grid gap-2 text-sm font-medium text-slate-800">
+      <div className="grid content-start gap-2 text-sm font-medium text-slate-800">
         <label htmlFor="guests">Guests</label>
         <input
           id="guests"
@@ -123,13 +125,13 @@ export default function SearchForm({
         />
         {errors.guests && <p id="guests-error" className="text-red-700">{errors.guests}</p>}
       </div>
-      <div className="flex items-end">
-        <button type="submit" disabled={isLoading} className="min-h-11 w-full rounded-md bg-teal-700 px-5 font-medium text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
+      <div className={compact ? "flex items-end" : "flex items-start pt-7"}>
+        <button type="submit" disabled={isLoading} className="min-h-12 w-full rounded-full bg-teal-700 px-5 font-medium text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
           {isLoading ? "Searching…" : "Search stays"}
         </button>
       </div>
       {Object.keys(errors).length > 0 && (
-        <p role="alert" className="text-sm text-red-700 sm:col-span-2">
+        <p role="alert" className="text-sm text-red-700 sm:col-span-2 lg:col-span-4">
           Please correct the highlighted fields before searching.
         </p>
       )}

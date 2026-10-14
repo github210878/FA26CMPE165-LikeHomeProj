@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #1e293b;
+  --background: #fafaf8;
+  --foreground: #27372e;
 }
 
 @theme inline {
@@ -10,15 +10,58 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-teal-50: #eff5e9;
+  --color-teal-100: #e1ecd9;
+  --color-teal-200: #c5d9b8;
+  --color-teal-600: #3d704a;
+  --color-teal-700: #224e43;
+  --color-teal-800: #193e35;
+  --color-teal-900: #163c27;
+  --color-slate-50: #f6f8f3;
+  --color-slate-100: #eef1e9;
+  --color-slate-200: #dde3d8;
+  --color-slate-300: #c2ccc0;
+  --color-slate-400: #83917f;
+  --color-slate-500: #637160;
+  --color-slate-600: #556350;
+  --color-slate-700: #40503d;
+  --color-slate-800: #30412f;
+  --color-slate-900: #223723;
+  --color-slate-950: #172e20;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+body { background: var(--background); color: var(--foreground); font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif; }
+::selection { background: #d9e8ca; color: #172e20; }
+:focus-visible { outline: 3px solid #568b45; outline-offset: 4px; }
+button:not(:disabled), a { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled) { cursor: pointer; }
+input:not([type="checkbox"]), select { background-color: #fff; transition: border-color .15s, box-shadow .15s; }
+input:not([type="checkbox"]):focus, select:focus { border-color: #568b45; }
+h1, h2, h3 { text-wrap: balance; }
+
+@layer components {
+  .site-container { @apply mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-10; }
+  .eyebrow { @apply flex items-center gap-2 text-xs font-semibold uppercase tracking-[.15em] text-teal-700; }
+  .primary-button { @apply inline-flex min-h-12 items-center justify-center gap-3 rounded-full bg-teal-700 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-800; }
+  .brand { @apply inline-flex items-center gap-2.5 text-xl font-semibold tracking-tight text-slate-950; }
+  .brand-mark { @apply flex h-9 w-9 items-center justify-center rounded-xl bg-teal-700 text-white; }
+  .getaway-hero { @apply relative isolate bg-slate-900; }
+  .destination-card { @apply relative block aspect-[1.5] overflow-hidden rounded-xl bg-slate-200 sm:aspect-[1.7]; }
+  .home-search { @apply grid grid-cols-2 gap-4 rounded-2xl bg-white p-5 text-slate-900 shadow-xl sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_.7fr_1fr] lg:gap-0 lg:p-4; }
+  .home-search > div { @apply min-w-0; }
+  .home-search > div:first-child { @apply col-span-full lg:col-span-1; }
+  .home-search > div:not(:last-of-type) { @apply lg:border-r lg:border-slate-200 lg:px-5; }
+  .home-search > div:last-of-type { @apply lg:pl-4; }
+  .home-search input { @apply h-11 min-h-11 rounded-lg border-slate-200 text-sm lg:border-transparent lg:px-0; }
+  .home-search input[aria-invalid="true"] { @apply border-red-600; }
+  .home-search button { @apply min-h-12 rounded-xl text-sm lg:h-full; }
+  .home-search > p { @apply col-span-full mt-3; }
+  .page-intro { @apply relative overflow-hidden rounded-3xl border border-slate-200 bg-teal-50 p-6 sm:p-9; }
+  .page-intro::after { content: ""; position: absolute; pointer-events: none; right: -45px; top: -65px; width: 240px; height: 240px; border: 35px solid #d9e7ce; border-radius: 50%; opacity: .5; }
+  .page-intro > * { position: relative; z-index: 1; }
+  .auth-layout { @apply mx-auto grid w-full max-w-5xl gap-8 px-5 py-10 sm:px-8 sm:py-16 md:grid-cols-[.85fr_1fr] md:items-start md:gap-14; }
+  .auth-story { @apply hidden md:block rounded-3xl bg-teal-100 p-8 md:sticky md:top-8 md:py-12; }
+  .auth-card { @apply rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-900/5 sm:p-8; }
 }
 
-:focus-visible {
-  outline: 3px solid #0f766e;
-  outline-offset: 3px;
-}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; } }
