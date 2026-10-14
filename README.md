@@ -307,13 +307,18 @@ Run backend tests with `python -m pytest -q -p no:cacheprovider tests`.
   the already-paid result. This is an application-level demo payment; no card,
   bank, or external provider is charged. Checkout opens a payment review page,
   and confirmation displays persisted payment state only after payment.
-- Cancellation creates a pending cancellation Payment equal to 20% of the
-  reservation total. That percentage is the team's current implementation
-  policy (`CANCELLATION_FEE`), not a percentage specified by the course
-  requirement. A paid booking Payment becomes `refunded` in LikeHome's ledger;
-  an unpaid booking Payment stays `pending` but cannot be paid after the
-  reservation is cancelled. No external charge or refund is processed.
 
+### 6.3.1 Define cancellation-charge business rules
+
+- Cancellation fee is 20% of `Reservation.total_price`.
+- Only confirmed bookings can be cancelled. Charge the fee once per booking.
+
+### 8.1.1 Define reward earning rule and eligibility
+
+- Paid and completed bookings earn 1 point per $1 of booking `Payment.amount`
+  in USD, including fees and tax. Cancellation charges earn no points.
+- Round down: $226.80 earns 226 points. Each booking earns points only once.
+- Automatic point awards will be implemented in 8.1.3.
 
 ### Frontend
 
