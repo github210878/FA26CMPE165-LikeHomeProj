@@ -1,6 +1,78 @@
 # FA26CMPE165-LikeHomeProj
 Repo for CMPE 165 semester project
 
+## Run the full stack with Docker Compose
+
+From the repository root, start MySQL, FastAPI, and Next.js together:
+
+```bash
+docker compose up -d --build --wait
+```
+
+This uses the existing Dockerfiles and MySQL 8.4 image. Docker Desktop must be
+running. The frontend currently runs the Next.js development server.
+
+### One-time setup
+
+The existing local setup already has `.env`, `backend/.env`, and the
+`likehome_mysql_data` volume. Keep those files and their current passwords.
+For a fresh checkout, create them first:
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+docker volume create likehome_mysql_data
+```
+
+Set `MYSQL_ROOT_PASSWORD` and `MYSQL_PASSWORD` in the root `.env`. Set
+`JWT_SECRET_KEY` to a long random secret in `backend/.env`, and add your SerpApi
+`API_KEY` for hotel searches. Compose reads the backend's other settings from
+`backend/.env` and overrides the database connection to use `db:3306`, database
+`likehome_db`, user `likehome`, and the root `.env`'s `MYSQL_PASSWORD`.
+
+If the old standalone containers are still running, stop them before starting
+Compose so their host ports are free:
+
+```bash
+docker stop likehome-frontend likehome-backend likehome-db
+```
+
+Compose creates its own containers and shared network. It reuses the existing
+`likehome_mysql_data` volume; the old standalone containers can remain stopped.
+Do not run both database containers against that volume at the same time.
+MySQL runs the schema initialization script only when the volume is empty.
+Existing databases keep their data and passwords; changing `.env` does not
+change passwords already stored in MySQL. Existing schemas still need any
+applicable migrations described below.
+
+### Connections and daily commands
+
+| Connection | Address |
+| --- | --- |
+| Frontend in your browser | http://localhost:3000 |
+| Backend API docs | http://localhost:8000/docs |
+| MySQL from your computer | `127.0.0.1:3307` |
+| Backend to MySQL inside Compose | `db:3306` |
+
+Compose supplies service names as internal hostnames. The frontend's API
+requests run in your browser, so `NEXT_PUBLIC_API_BASE_URL` uses
+`http://localhost:8000`. Startup waits for MySQL's application user to query the
+schema, then for the backend, then for the frontend to respond.
+
+```bash
+docker compose ps                # Check service status
+docker compose logs -f           # Follow logs (Ctrl+C exits the log viewer)
+docker compose down              # Stop and remove Compose containers/network
+docker compose up -d --wait      # Start again using the built images
+```
+
+Run `docker compose up -d --build --wait` again after code or dependency changes.
+The external database volume survives `docker compose down`, including `down -v`.
+The Compose file manages this local development stack; see
+[Docker's networking guide](https://docs.docker.com/compose/how-tos/networking/)
+and [startup-order guide](https://docs.docker.com/compose/how-tos/startup-order/)
+for how service names and health checks work.
+
 ## Run locally
 
 The project has a FastAPI backend and a Next.js frontend. Use Python 3.10+
