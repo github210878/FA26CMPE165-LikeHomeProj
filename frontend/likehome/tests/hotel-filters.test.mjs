@@ -115,9 +115,11 @@ function searchHarness() {
   const slots = [];
   let cursor = 0;
   const hooks = {
+    useCallback(callback) { return callback; },
+    useEffect() {},
     useState(initial) {
       const index = cursor++;
-      if (!(index in slots)) slots[index] = initial;
+      if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
       return [slots[index], (value) => {
         slots[index] = typeof value === "function" ? value(slots[index]) : value;
       }];

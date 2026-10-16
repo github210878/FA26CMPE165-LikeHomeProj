@@ -24,18 +24,18 @@ export default function RecentSearches({
   if (searches.length === 0) return null;
 
   return (
-    <section className="mt-6 max-w-3xl" aria-labelledby="recent-searches-heading">
+    <section className="mt-8 border-b border-slate-200 pb-8" aria-labelledby="recent-searches-heading">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="recent-searches-heading" className="text-lg font-semibold text-slate-950">Recent searches</h2>
+        <h2 id="recent-searches-heading" className="text-xl font-semibold text-slate-950">Recent searches</h2>
         <button type="button" onClick={clearRecentSearches} className="min-h-11 rounded-md px-3 text-sm font-medium text-teal-700 hover:bg-teal-50">
           Clear history
         </button>
       </div>
-      <ul className="mt-2 grid gap-2">
+      <ul className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {searches.map((values) => (
-          <li key={JSON.stringify(values)} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <li key={JSON.stringify(values)} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-teal-600">
             <div className="min-w-0">
-              <p className="break-words font-medium text-slate-950">{values.destination}</p>
+              <p className="break-words font-semibold text-slate-950">{values.destination}</p>
               <p className="text-sm leading-6 text-slate-600">
                 {values.checkIn} – {values.checkOut} · {values.guests} {values.guests === "1" ? "guest" : "guests"}
               </p>

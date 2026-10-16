@@ -1,6 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import HotelResultCard from "@/components/HotelResultCard";
 import HotelFilters from "@/components/HotelFilters";
 import ErrorState from "@/components/ErrorState";
@@ -18,8 +20,9 @@ import { SearchResultsSkeleton } from "@/components/LoadingSkeletons";
 
 type SearchStatus = "idle" | "loading" | "error" | "success";
 
-export default function SearchExperience() {
-  const [status, setStatus] = useState<SearchStatus>("idle");
+export default function SearchExperience({ initialSearch }: { initialSearch?: SearchValues } = {}) {
+  const initialSearchStarted = useRef(false);
+  const [status, setStatus] = useState<SearchStatus>(() => initialSearch && Object.keys(validateSearchValues(initialSearch)).length === 0 ? "loading" : "idle");
   const [error, setError] = useState<SearchError | null>(null);
   const [results, setResults] = useState<HotelSearchResponse | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<SearchValues | null>(null);
@@ -37,11 +40,11 @@ export default function SearchExperience() {
   const displayedHotels = sortHotels(filteredHotels, sort);
   const amenityOptions = results ? getAmenityOptions(results.properties) : [];
 
-  function clearFilters() {
+  const clearFilters = useCallback(() => {
     setFilters({ maxPrice: "", amenities: [] });
-  }
+  }, []);
 
-  async function handleSearch(values: SearchValues, { retry = false, fresh = false }: SearchOptions & { retry?: boolean } = {}) {
+  const handleSearch = useCallback(async (values: SearchValues, { retry = false, fresh = false }: SearchOptions & { retry?: boolean } = {}) => {
     if (pending.current) return;
     pending.current = true;
     lastSearch.current = { values: { ...values }, fresh };
@@ -71,7 +74,23 @@ export default function SearchExperience() {
     } finally {
       pending.current = false;
     }
-  }
+  }, [clearFilters]);
+
+  useEffect(() => {
+    if (!initialSearch || initialSearchStarted.current || Object.keys(validateSearchValues(initialSearch)).length > 0) return;
+    initialSearchStarted.current = true;
+    pending.current = true;
+    lastSearch.current = { values: { ...initialSearch }, fresh: false };
+    rememberRecentSearch(initialSearch);
+    searchHotels(initialSearch).then((response) => {
+      setResults(response);
+      setSelectedSearch(initialSearch);
+      setStatus("success");
+    }).catch((failure: unknown) => {
+      setError(searchError(failure));
+      setStatus("error");
+    }).finally(() => { pending.current = false; });
+  }, [initialSearch]);
 
   async function loadNextPage() {
     const currentRequest = requestId.current;
@@ -137,15 +156,56 @@ export default function SearchExperience() {
 
   return (
     <>
+      <section className="relative isolate bg-teal-900">
+        <Image src="/images/italian-coast.jpg" alt="Colorful seaside homes above the Mediterranean in Cinque Terre, Italy" fill priority sizes="100vw" className="object-cover object-[center_40%]" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/50 to-black/20" />
+        <div className="site-container relative py-10 sm:py-14">
+          <p className="text-xs font-semibold uppercase tracking-[.25em] text-white/90">Find a stay</p>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-5xl">Where would you like to stay?</h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-white/90">Somewhere new, somewhere familiar, somewhere just for you.</p>
+          <div className="mt-8">
       <SearchForm
+        compact
         key={restoredSearch?.version ?? 0}
-        initialValues={restoredSearch?.values}
+        initialValues={restoredSearch?.values ?? initialSearch}
         onSearch={submitSearch}
         isLoading={status === "loading"}
       />
+          </div>
+        </div>
+      </section>
+      <div className="site-container pb-12">
       <RecentSearches onReplay={replaySearch} isLoading={status === "loading"} />
 
-      <div className="mt-12 border-t border-slate-200 pt-8" aria-live="polite">
+      {status === "idle" && (
+        <section className="mt-9" aria-labelledby="popular-destinations-heading">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="popular-destinations-heading" className="text-2xl font-semibold tracking-tight text-slate-950">Popular destinations</h2>
+              <p className="mt-2 text-sm text-slate-600">A little inspiration for your next trip.</p>
+            </div>
+            <Link href="/#destinations" className="inline-flex min-h-11 items-center text-sm font-semibold text-teal-800">Explore destinations →</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {[
+              { name: "New York City", image: "new-york-city", description: "Iconic sights & skyline nights" },
+              { name: "Tokyo", image: "tokyo-skyline", description: "Neon streets & new discoveries" },
+              { name: "Lake Tahoe", image: "lake-tahoe", description: "Lakeside days & mountain air" },
+              { name: "Paris", image: "paris", description: "Riverside strolls & café mornings" },
+            ].map((destination) => (
+              <Link key={destination.name} href={`/search?destination=${encodeURIComponent(destination.name)}`} className="group relative aspect-[1.1] overflow-hidden rounded-2xl bg-slate-200 sm:aspect-[1.25]">
+                <Image src={`/images/${destination.image}.jpg`} alt="" fill sizes="(max-width: 1023px) 50vw, 25vw" className="object-cover transition-transform duration-300 group-hover:scale-105" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-4 sm:p-5">
+                  <div><h3 className="text-lg font-semibold text-white">{destination.name}</h3><p className="mt-1 text-xs leading-5 text-white/90">{destination.description}</p></div>
+                  <span aria-hidden="true" className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/70 text-xl text-white sm:flex">→</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+      <div className="mt-10 border-t border-slate-200 pt-8" aria-live="polite">
         <h2 className="text-xl font-semibold text-slate-950">Available stays</h2>
         {status === "idle" && <p className="mt-2 text-sm leading-6 text-slate-600">Enter a destination and dates to find available stays.</p>}
         {status === "loading" && <SearchResultsSkeleton />}
@@ -222,6 +282,7 @@ export default function SearchExperience() {
             )}
           </>
         )}
+      </div>
       </div>
     </>
   );
