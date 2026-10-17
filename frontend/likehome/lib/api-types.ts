@@ -153,3 +153,109 @@ export type CancellationResponse = {
   cancellation_amount: number;
   cancellation_payment_status: "pending";
 };
+
+// Internal ledger entries are separate from refunds, cash balances, and rewards.
+export type AdjustmentDetailResponse = {
+  adjustment_id: number;
+  change_id: number;
+  reservation_id: number;
+  currency: "USD";
+  entry_role: "price_change" | "cancellation_reconciliation";
+  reconciles_adjustment_id: number | null;
+  kind: "charge" | "credit";
+  amount: number;
+  status: "pending" | "paid" | "failed" | "recorded" | "voided";
+  settled_at: string | null;
+};
+
+export type ReservationFinancialSummary = {
+  reservation_id: number;
+  reservation_revision: number;
+  reservation_status: "confirmed" | "cancelled" | "completed";
+  currency: "USD";
+  latest_change_id: number | null;
+  current_reservation_total: number;
+  current_booking_obligation: number;
+  original_booking_payment: PaymentResponse;
+  paid_additional_charges: number;
+  pending_additional_charges: number;
+  failed_additional_charges: number;
+  recorded_internal_credits: number;
+  outstanding_additional_amount: number;
+  adjustments: AdjustmentDetailResponse[];
+  voided_additional_charges: number;
+  cancellation_reconciliations: AdjustmentDetailResponse[];
+  reconciliation_credits: number;
+  reconciliation_debits: number;
+  cancellation_payment: PaymentResponse | null;
+  outstanding_cancellation_amount: number;
+  outstanding_booking_amount: number;
+};
+
+export type ReservationChangeReviewRequest = {
+  check_in_date: string;
+  check_out_date: string;
+  q: string;
+  adults: number;
+  children: number;
+  currency?: "USD";
+  gl?: "us";
+  hl?: "en";
+};
+
+// A temporary review artifact; receiving it does not confirm a reservation change.
+export type ReservationChangeQuoteResponse = {
+  reservation_id: number;
+  quote_id: string;
+  expires_at: string;
+  quote: HotelRevalidationResponse;
+};
+
+// The public receipt request allows past stay dates for exact committed retries.
+export type ReservationChangeConfirmRequest = {
+  check_in_date: string;
+  check_out_date: string;
+  quote_id: string;
+  accept_quote: true;
+  price_per_night: number;
+  accepted_payment_amount: number;
+};
+
+export type ReservationChangeReceiptAdjustment = {
+  adjustment_id: number;
+  kind: "charge" | "credit";
+  amount: string;
+  status: "pending" | "recorded";
+};
+
+// Historical confirmation result; money stays in canonical decimal strings and
+// adjustment status describes confirmation, rather than current settlement.
+export type ReservationChangeReceiptResponse = {
+  change_id: number;
+  reservation_id: number;
+  revision: number;
+  room_type_id: number;
+  check_in_date: string;
+  check_out_date: string;
+  reservation_total: string;
+  payment_obligation: string;
+  previous_payment_obligation: string;
+  payment_difference: string;
+  booking_payment_id: number;
+  booking_payment_status: "pending" | "paid";
+  adjustment: ReservationChangeReceiptAdjustment | null;
+};
+
+export type AdjustmentSettlementRequest = {
+  accepted_amount: number;
+  reservation_revision: number;
+  accept_payment: true;
+};
+
+// Settlement retains the numeric adjustment contract, unlike historical receipts.
+export type AdjustmentSettlementResponse = AdjustmentDetailResponse & {
+  entry_role: "price_change";
+  kind: "charge";
+  status: "paid";
+  settled_at: string;
+};
