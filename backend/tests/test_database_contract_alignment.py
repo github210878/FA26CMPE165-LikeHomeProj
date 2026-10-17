@@ -189,29 +189,21 @@ def test_local_search_router_uses_cache_service(monkeypatch):
     assert hotel_router.local_search_hotels(search_request(), sentinel_db) is expected
 
 
-def test_partner_hotel_id_is_integer_and_internal_token_is_not_external(monkeypatch):
+def test_partner_hotel_id_is_integer_and_internal_token_is_not_external(monkeypatch, sqlite_session):
     monkeypatch.setattr(partner_dao, "get_hotel_id_by_partner_id", lambda db, partner_id: 17)
     assert partner_service.get_hotel_id_by_partner_id(object(), 3) == 17
 
     request = PartnerRegisterRequest(user_name="partner", password="password", hotel_name="A")
     with pytest.raises(ValidationError):
         PartnerRegisterRequest(user_name="partner", password="password", hotel_name="A", hotel_token="legacy:1")
-    captured = {}
-    monkeypatch.setattr(partner_service.booking_dao, "is_hotel_in_db", lambda db, hotel: captured.setdefault("hotel", hotel) and 17)
     monkeypatch.setattr(partner_service.PASSWORD_HASHER, "hash", lambda password: "hashed")
-
-    class FakeDb:
-        def add(self, partner):
-            partner.partner_id = 3
-            captured["partner"] = partner
-
-        def commit(self):
-            pass
-
-    response = partner_service.register_partner(FakeDb(), request)
-    assert response.partner_id == 3
-    assert captured["hotel"].hotel_token.startswith("partner:")
-    assert captured["partner"].hotel_token == captured["hotel"].hotel_token
+    HotelPartner.__table__.create(sqlite_session.get_bind())
+    response = partner_service.register_partner(sqlite_session, request)
+    assert isinstance(response.partner_id, int)
+    partner = sqlite_session.get(HotelPartner, response.partner_id)
+    hotel = sqlite_session.get(Hotel, partner.hotel_id)
+    assert hotel.hotel_token.startswith("partner:")
+    assert partner.hotel_token == hotel.hotel_token
 
 
 def test_sql_contract_matches_cache_and_partner_models():
