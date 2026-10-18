@@ -96,7 +96,7 @@ def registration_params(**overrides):
 ])
 def test_public_registration_rejects_supplied_tokens_without_writes(ownership_app, token):
     client, engine, _ = ownership_app
-    response = client.post("/partners/register", params=registration_params(hotel_token=token))
+    response = client.post("/partners/register", json=registration_params(hotel_token=token))
     assert response.status_code == 422
     assert "other-customer@" not in response.text
     assert "Other Hotel" not in response.text
@@ -111,7 +111,7 @@ def test_registration_rejection_does_not_disclose_property_existence(ownership_a
     client, _, _ = ownership_app
     messages = []
     for token in ("public-property-other", "unknown-property"):
-        response = client.post("/partners/register", params=registration_params(hotel_token=token))
+        response = client.post("/partners/register", json=registration_params(hotel_token=token))
         assert response.status_code == 422
         messages.append([(e["type"], e["msg"]) for e in response.json()["detail"]])
     assert messages[0] == messages[1]
@@ -119,10 +119,10 @@ def test_registration_rejection_does_not_disclose_property_existence(ownership_a
 
 def test_attacker_cannot_claim_or_read_existing_hotel(ownership_app):
     client, engine, _ = ownership_app
-    rejected = client.post("/partners/register", params=registration_params(hotel_token="public-property-other"))
+    rejected = client.post("/partners/register", json=registration_params(hotel_token="public-property-other"))
     assert rejected.status_code == 422
     # A normal registration cannot attach to an existing hotel even with the same name.
-    created = client.post("/partners/register", params=registration_params(hotel_name="Other Hotel"))
+    created = client.post("/partners/register", json=registration_params(hotel_name="Other Hotel"))
     assert created.status_code == 200
     partner_id = created.json()["partner_id"]
     response = client.get("/partners/check_booking/", headers=partner_headers(partner_id))
@@ -135,7 +135,7 @@ def test_attacker_cannot_claim_or_read_existing_hotel(ownership_app):
 
 def test_preexisting_external_claim_can_authenticate_but_cannot_read_bookings(ownership_app):
     client, engine, _ = ownership_app
-    login = client.post("/partners/login", params={"user_name": "previous-claim", "password": "password123"})
+    login = client.post("/partners/login", json={"user_name": "previous-claim", "password": "password123"})
     assert login.status_code == 200
     response = client.get("/partners/check_booking/", headers={"Authorization": f"Bearer {login.json()['access_token']}"})
     assert response.status_code == 403
@@ -207,7 +207,7 @@ def test_denied_access_never_queries_customer_or_reservation_data(ownership_app)
 
 def test_new_registration_login_and_own_eligible_hotel_access(ownership_app):
     client, engine, _ = ownership_app
-    response = client.post("/partners/register", params=registration_params())
+    response = client.post("/partners/register", json=registration_params())
     assert response.status_code == 200
     partner_id = response.json()["partner_id"]
     with Session(engine) as db:
@@ -221,7 +221,7 @@ def test_new_registration_login_and_own_eligible_hotel_access(ownership_app):
         db.add(Reservation(reservation_id=302, user_id=8, room_type_id=301, total_price=252,
                            check_in_date=date(2030, 12, 1), check_out_date=date(2030, 12, 3)))
         db.commit()
-    login = client.post("/partners/login", params={"user_name": "new-partner", "password": "password123"})
+    login = client.post("/partners/login", json={"user_name": "new-partner", "password": "password123"})
     assert login.status_code == 200
     claims = auth.decode_access_token(HTTPAuthorizationCredentials(scheme="Bearer", credentials=login.json()["access_token"]))
     assert claims["type"] == "partner"
