@@ -11,13 +11,12 @@ from app.schemas.booking_schema import (
 )
 from app.models.payment import Payment
 from app.repositories import booking_dao
-from app.config.constants import Constants
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.schemas.hotel_schema import HotelRevalidationRequest
 from app.services import hotel_service
+from app.services.cancellation_policy import calculate_cancellation_fee
 
-cancellation_fee = Constants.CANCELLATION_FEE
 MONEY_CENT = Decimal("0.01")
 MAX_MONEY = Decimal("99999999.99")  # DECIMAL(10, 2) in the initialization SQL
 
@@ -243,7 +242,7 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
             booking_payment.payment_status = "refunded"
         cancellation_payment = Payment(
             reservation_id=reservation.reservation_id,
-            amount=reservation.total_price * cancellation_fee,
+            amount=float(calculate_cancellation_fee(reservation.total_price)),
             payment_type="cancellation",
             payment_status="pending",
         )
