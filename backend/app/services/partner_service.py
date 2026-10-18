@@ -71,7 +71,10 @@ def login_partner(
     if not partner or not PASSWORD_HASHER.verify(
         partner_info.password, partner.password_hash
     ):
-        raise ValueError("Invalid username or password")
+        raise HTTPException(
+            status_code=401, detail="Invalid username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     access_token = create_access_token(
         partner.partner_id,
