@@ -1,0 +1,211 @@
+"""Contracts for reviewing date-only reservation changes.
+
+Clients reconfirm destination/occupancy but cannot choose owner/property identity
+or authoritative pricing. Quote acknowledgements must be compared with a verified
+review and fresh revalidation; they never authorize a payment adjustment themselves.
+"""
+
+from datetime import date, datetime
+from math import isfinite
+from typing import Literal
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas import booking_schema
+from app.schemas.hotel_schema import HotelRevalidationResponse
+
+MAX_CHANGE_QUOTE_LENGTH = 16384
+MAX_SAFE_ID = 9007199254740991
+
+
+class ReservationChangeQuoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    check_in_date: date
+    check_out_date: date
+
+    @field_validator("check_in_date", "check_out_date", mode="before")
+    @classmethod
+    def calendar_date(cls, value: object) -> date:
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = date.fromisoformat(value)
+                if parsed.isoformat() == value:
+                    return parsed
+            except ValueError as exc:
+                raise ValueError("Date must be a valid date in YYYY-MM-DD format") from exc
+        raise ValueError("Date must be a valid date in YYYY-MM-DD format")
+
+    @model_validator(mode="after")
+    def valid_stay(self) -> "ReservationChangeQuoteRequest":
+        # Share booking validation's calendar, including its fixed test clock.
+        if self.check_in_date < booking_schema.date.today():
+            raise ValueError("check_in_date cannot be in the past")
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("check_out_date must be after check_in_date")
+        return self
+
+
+class ReservationChangeConfirmRequest(ReservationChangeQuoteRequest):
+    quote_id: str = Field(strict=True, min_length=1, max_length=MAX_CHANGE_QUOTE_LENGTH)
+    accept_quote: bool = Field(strict=True)
+    price_per_night: float = Field(
+        strict=True, gt=0, le=99999999.99, allow_inf_nan=False,
+        description="Accepted base nightly quote; compared with provider, never authoritative.",
+    )
+    accepted_payment_amount: float = Field(
+        strict=True, gt=0, le=99999999.99, allow_inf_nan=False,
+        description="Accepted full LikeHome quote; not a client-selected payment adjustment.",
+    )
+
+    @field_validator("quote_id")
+    @classmethod
+    def nonblank_quote_id(cls, value: str) -> str:
+        # Identifiers are opaque: hashing/signature verification must see the
+        # same bytes as the accepted request, including surrounding whitespace.
+        if not value.strip():
+            raise ValueError("A reviewed quote is required")
+        return value
+
+    @field_validator("accept_quote")
+    @classmethod
+    def explicit_acceptance(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("The revised quote must be explicitly accepted")
+        return value
+
+
+class ReservationChangeReceiptRequest(ReservationChangeConfirmRequest):
+    """Confirmation input allowing historical retries.
+
+    The service must check committed receipts first and then revalidate every
+    unconsumed request with ReservationChangeConfirmRequest before mutation.
+    """
+
+    @model_validator(mode="after")
+    def valid_stay(self) -> "ReservationChangeReceiptRequest":
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("Check-out must follow check-in")
+        return self
+
+
+class ReservationChangeReceiptAdjustment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    adjustment_id: int = Field(strict=True, gt=0, le=MAX_SAFE_ID)
+    kind: Literal["charge", "credit"]
+    amount: str = Field(strict=True, pattern=r"^[0-9]+\.[0-9]{2}$")
+    status: Literal["pending", "recorded"]
+
+    @model_validator(mode="after")
+    def confirmation_status(self) -> "ReservationChangeReceiptAdjustment":
+        if (self.kind, self.status) not in (("charge", "pending"), ("credit", "recorded")):
+            raise ValueError("Receipt adjustments describe a pending charge or recorded internal credit")
+        return self
+
+
+class ReservationChangeReceiptResponse(BaseModel):
+    """Exact committed receipt; money retains the stored canonical cent strings.
+
+    This historical snapshot does not describe the current settlement status.
+    Financial-summary and payment responses retain their numeric money fields.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    change_id: int = Field(strict=True, gt=0, le=MAX_SAFE_ID)
+    reservation_id: int = Field(strict=True, gt=0, le=MAX_SAFE_ID)
+    revision: int = Field(strict=True, gt=0, le=4294967295)
+    room_type_id: int = Field(strict=True, gt=0, le=MAX_SAFE_ID)
+    check_in_date: date
+    check_out_date: date
+    reservation_total: str = Field(strict=True, pattern=r"^[0-9]+\.[0-9]{2}$")
+    payment_obligation: str = Field(strict=True, pattern=r"^[0-9]+\.[0-9]{2}$")
+    previous_payment_obligation: str = Field(strict=True, pattern=r"^[0-9]+\.[0-9]{2}$")
+    payment_difference: str = Field(strict=True, pattern=r"^-?[0-9]+\.[0-9]{2}$")
+    booking_payment_id: int = Field(strict=True, gt=0, le=MAX_SAFE_ID)
+    booking_payment_status: Literal["pending", "paid"]
+    adjustment: ReservationChangeReceiptAdjustment | None
+
+    @field_validator("check_in_date", "check_out_date", mode="before")
+    @classmethod
+    def calendar_date(cls, value: object) -> date:
+        return ReservationChangeQuoteRequest.calendar_date(value)
+
+    @model_validator(mode="after")
+    def valid_stay(self) -> "ReservationChangeReceiptResponse":
+        if self.check_out_date <= self.check_in_date:
+            raise ValueError("Check-out must follow check-in")
+        return self
+
+
+class ReservationChangeQuoteResponse(BaseModel):
+    """A signed ten-minute review; it does not finalize a reservation change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reservation_id: int = Field(strict=True, gt=0, le=MAX_SAFE_ID)
+    quote_id: str = Field(strict=True, min_length=1, max_length=MAX_CHANGE_QUOTE_LENGTH)
+    expires_at: AwareDatetime
+    quote: HotelRevalidationResponse
+
+    @field_validator("quote_id")
+    @classmethod
+    def nonblank_quote_id(cls, value: str) -> str:
+        return ReservationChangeConfirmRequest.nonblank_quote_id(value)
+
+    @model_validator(mode="after")
+    def valid_quote_shape(self) -> "ReservationChangeQuoteResponse":
+        quote = self.quote
+        if (not quote.property_token.strip() or len(quote.property_token) > 255
+                or not quote.hotel_name.strip() or not quote.source.strip()
+                or quote.check_out_date <= quote.check_in_date
+                or quote.number_of_nights != (quote.check_out_date - quote.check_in_date).days
+                or not 1 <= quote.adults <= 20 or not 0 <= quote.children <= 20
+                or quote.guest_capacity < quote.adults + quote.children):
+            raise ValueError("Quote must describe a complete, consistent property and stay")
+        amounts = [quote.current_price_per_night, quote.provider_base_total,
+                   quote.likehome_reservation_total, quote.likehome_payment_amount]
+        if quote.provider_total_with_taxes_fees is not None:
+            amounts.append(quote.provider_total_with_taxes_fees)
+        if any(not isfinite(value) or value <= 0 for value in amounts):
+            raise ValueError("Quote amounts must be positive finite numbers")
+        return self
+
+
+class ReservationChangeRevalidationContext(BaseModel):
+    """Server-established context, from storage or an approved reconfirmation flow.
+
+    Neither occupancy field has a default: existing reservations do not store
+    these values. Provider capacity and room labels cannot establish occupancy.
+    Currency/locale match the existing booking contract's supported values.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    q: str = Field(min_length=1, max_length=255)
+    adults: int = Field(strict=True, ge=1, le=20)
+    children: int = Field(strict=True, ge=0, le=20)
+    currency: Literal["USD"] = "USD"
+    gl: Literal["us"] = "us"
+    hl: Literal["en"] = "en"
+
+    @field_validator("q")
+    @classmethod
+    def nonblank_destination(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("A destination is required")
+        return value
+
+
+class ReservationChangeReviewRequest(
+    ReservationChangeQuoteRequest, ReservationChangeRevalidationContext,
+):
+    """Customer-reconfirmed context for the public quote-only endpoint.
+
+    These occupancy values are not verified historical occupancy. Property
+    identity still comes exclusively from the authenticated owner's reservation.
+    """
