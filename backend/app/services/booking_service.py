@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -166,8 +166,28 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     return booking_dao.get_payment_by_id(db, payment_id, user_id)
 
 
+def _booking_reward_points(amount: float | Decimal) -> int:
+    """Earn one point per whole USD of a supported persisted payment amount."""
+    try:
+        if isinstance(amount, bool) or not isinstance(amount, (int, float, Decimal)):
+            raise ValueError("Payment amount is not numeric")
+        value = Decimal(str(amount))
+        if (
+            not value.is_finite()
+            or value < 0
+            or value > MAX_MONEY
+            or value != value.quantize(MONEY_CENT)
+        ):
+            raise ValueError("Payment amount is outside supported cents")
+        return int(value.to_integral_value(rounding=ROUND_FLOOR))
+    except (InvalidOperation, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="Payment amount is unsupported"
+        ) from exc
+
+
 def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentResponse:
-    """Mark one owned booking payment paid inside LikeHome; no external charge occurs."""
+    """Commit one internal payment and its reward award together; no external charge."""
     try:
         reservation_id = booking_dao.get_owned_payment_reservation_id(
             db, payment_id, user_id
@@ -175,8 +195,16 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
         if reservation_id is None:
             raise HTTPException(status_code=404, detail="Payment not found")
         # Authentication and ownership reads may have opened a REPEATABLE READ
-        # snapshot. Lock the reservation first, matching cancellation order.
+        # snapshot. Start fresh, then lock User -> Reservation -> ordered Payments.
+        # Booking creation also locks User first; cancellation locks only the
+        # Reservation -> Payments suffix and never updates rewards.
         db.rollback()
+        user = booking_dao.lock_active_user_for_payment(db, user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=401, detail="User is inactive or does not exist",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         reservation = booking_dao.lock_owned_reservation(db, reservation_id, user_id)
         if reservation is None:
             raise HTTPException(status_code=404, detail="Payment not found")
@@ -187,19 +215,22 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
             raise HTTPException(status_code=409, detail="Payment cannot be completed")
         if payment.payment_status not in ("pending", "paid"):
             raise HTTPException(status_code=409, detail="Payment cannot be completed")
+        points = _booking_reward_points(payment.amount)
         if payment.payment_status == "pending":
             if reservation.status != "confirmed":
                 raise HTTPException(
                     status_code=409, detail="Payment cannot be completed"
                 )
             payment.payment_status = "paid"
+            booking_dao.add_reward_points_to_user(db, user, points=points)
             result = PaymentResponse(**booking_dao.payment_result(payment))
             db.commit()
-            booking_dao.add_reward_points_to_user(
-                db, user_id, points=payment.amount
-            )  # Add reward points for the booking payment
             return result
-        return PaymentResponse(**booking_dao.payment_result(payment))
+        # Paid is the award marker for new atomic transitions. Never infer a
+        # missing historical award from the aggregate balance or retry it here.
+        result = PaymentResponse(**booking_dao.payment_result(payment))
+        db.rollback()
+        return result
     except HTTPException:
         db.rollback()
         raise
