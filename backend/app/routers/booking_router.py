@@ -9,12 +9,28 @@ from app.schemas.booking_schema import (
     PaymentResponse,
 )
 from app.services import booking_service
+from app.schemas.reservation_change_schema import (
+    ReservationChangeQuoteResponse,
+    ReservationChangeReviewRequest,
+)
+from app.services import reservation_change_quote_service
 from app.utilities.auth import get_current_user_id
 
 router = APIRouter(
     prefix="/bookings",
     tags=["Bookings"],
 )
+
+
+@router.post("/{reservation_id}/change-quote", response_model=ReservationChangeQuoteResponse)
+def quote_reservation_change(
+    reservation_id: int,
+    review: ReservationChangeReviewRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Review a same-property date change; this does not change or hold a booking."""
+    return reservation_change_quote_service.create_change_quote(db, reservation_id, review, user_id)
 
 
 @router.post("/create", response_model=BookingResponse)
