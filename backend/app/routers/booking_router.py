@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
@@ -14,12 +14,30 @@ from app.schemas.reservation_change_schema import (
     ReservationChangeReviewRequest,
 )
 from app.services import reservation_change_quote_service
+from app.schemas.reservation_change_payment_schema import ReservationFinancialSummary
+from app.services import reservation_financial_summary_service
 from app.utilities.auth import get_current_user_id
 
 router = APIRouter(
     prefix="/bookings",
     tags=["Bookings"],
 )
+
+
+async def _financial_summary_read_request(request: Request) -> None:
+    if request.query_params or await request.body():
+        raise HTTPException(status_code=422, detail="Financial summary accepts no query parameters or body")
+
+
+@router.get("/{reservation_id}/financial-summary", response_model=ReservationFinancialSummary)
+def get_reservation_financial_summary(
+    reservation_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+    _request: None = Depends(_financial_summary_read_request),
+):
+    """Read this customer's pre-change financial state; revision 0 is a convention."""
+    return reservation_financial_summary_service.get_financial_summary(db, reservation_id, user_id)
 
 
 @router.post("/{reservation_id}/change-quote", response_model=ReservationChangeQuoteResponse)
