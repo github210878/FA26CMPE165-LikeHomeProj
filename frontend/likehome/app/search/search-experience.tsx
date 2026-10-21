@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import HotelResultCard from "@/components/HotelResultCard";
 import HotelFilters from "@/components/HotelFilters";
+import HotelSortSelector from "@/components/HotelSortSelector";
 import ErrorState from "@/components/ErrorState";
 import { searchError, type SearchError } from "@/lib/search-error";
 import type { HotelSearchResponse } from "@/lib/api-types";
@@ -13,7 +14,7 @@ import { rememberRecentSearch } from "@/lib/recent-searches";
 import { validateSearchValues } from "@/lib/search-validation.mjs";
 import { checkoutHref } from "@/lib/checkout-selection";
 import { filterHotels, getAmenityOptions, type HotelFilterValues } from "@/lib/hotel-filters";
-import { HOTEL_SORT_OPTIONS, sortHotels, type HotelSort } from "@/lib/hotel-sort";
+import { sortHotels, type HotelSort } from "@/lib/hotel-sort";
 import SearchForm from "./search-form";
 import RecentSearches from "./recent-searches";
 import { SearchResultsSkeleton } from "@/components/LoadingSkeletons";
@@ -226,19 +227,7 @@ export default function SearchExperience({ initialSearch }: { initialSearch?: Se
           <>
             <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <p role="status" className="text-sm leading-6 text-slate-600">{filteredHotels.length} of {results.properties.length} loaded stays match for {results.search_query}.</p>
-              <div className="grid gap-2 text-sm text-slate-800 sm:w-64">
-                <label htmlFor="hotel-sort" className="font-medium">Sort stays</label>
-                <select
-                  id="hotel-sort"
-                  value={sort}
-                  onChange={(event) => setSort(event.target.value as HotelSort)}
-                  className="min-h-11 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3"
-                >
-                  {HOTEL_SORT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </div>
+              <HotelSortSelector id="hotel-sort" value={sort} onChange={setSort} />
             </div>
             <HotelFilters values={filters} amenityOptions={amenityOptions} onChange={setFilters} onClear={clearFilters} />
             {filteredHotels.length === 0 && (
