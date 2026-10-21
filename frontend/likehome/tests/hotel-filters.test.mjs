@@ -103,6 +103,9 @@ function loadComponent(path, imports) {
 const HotelFilters = loadComponent("../components/HotelFilters.tsx", {
   "@/lib/hotel-filters": { parseMaxPrice },
 });
+const HotelSortSelector = loadComponent("../components/HotelSortSelector.tsx", {
+  "@/lib/hotel-sort": { HOTEL_SORT_OPTIONS },
+});
 const RetryButton = loadComponent("../components/RetryButton.tsx", {});
 const ErrorState = loadComponent("../components/ErrorState.tsx", {
   "./RetryButton": { default: RetryButton },
@@ -136,6 +139,7 @@ function searchHarness() {
     react: hooks,
     "@/components/HotelResultCard": { default: HotelResultCard },
     "@/components/HotelFilters": { default: HotelFilters },
+    "@/components/HotelSortSelector": { default: HotelSortSelector },
     "@/components/LoadingSkeletons": { SearchResultsSkeleton: () => null },
     "@/components/ErrorState": { default: ErrorState },
     "@/lib/search-error": { searchError },
@@ -161,6 +165,7 @@ function searchHarness() {
         if (!node || typeof node !== "object") return;
         nodes.push(node);
         if (node.type === HotelFilters) visit(HotelFilters(node.props));
+        else if (node.type === HotelSortSelector) visit(HotelSortSelector(node.props));
         else if (node.type === ErrorState) visit(ErrorState(node.props));
         else if (node.type === RetryButton) visit(RetryButton(node.props));
         else visit(node.props?.children);
@@ -173,7 +178,7 @@ function searchHarness() {
         form: nodes.find((node) => node.type === SearchForm),
         retry: nodes.find((node) => node.type === RetryButton),
         price: nodes.find((node) => node.props?.id === "hotel-max-price"),
-        sort: nodes.find((node) => node.props?.id === "hotel-sort"),
+        sort: nodes.find((node) => node.type === "select" && node.props?.id === "hotel-sort"),
         checkbox: (value) => nodes.find((node) => node.type === "input" && node.props.value === value),
         clearButton: nodes.find((node) => node.type === "button" && node.props.children === "Clear filters"),
       };
@@ -423,7 +428,7 @@ test("sort control composes with filters, retains context and counts, clears loc
   assert.equal(view.sort.props.value, "recommended");
   assert.match(view.html, /<label[^>]*for="hotel-sort"[^>]*>Sort stays<\/label>/);
   assert.equal(view.sort.type, "select");
-  assert.match(view.sort.props.className, /min-h-11/);
+  assert.match(view.sort.props.className, /min-h-12/);
   assert.deepEqual(view.nodes.filter((node) => node.type === "option").map((node) => node.props.children), [
     "Recommended / Default", "Price: Low to High", "Price: High to Low", "Guest Rating: High to Low",
   ]);
