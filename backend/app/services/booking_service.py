@@ -1,4 +1,4 @@
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -9,13 +9,13 @@ from app.schemas.booking_schema import (
     CancellationResponse,
     PaymentResponse,
 )
-from app.models.payment import Payment
 from app.repositories import booking_dao
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.schemas.hotel_schema import HotelRevalidationRequest
 from app.services import hotel_service
 from app.services.cancellation_policy import calculate_cancellation_fee
+from app.services.payment_service import payment_service
 
 MONEY_CENT = Decimal("0.01")
 MAX_MONEY = Decimal("99999999.99")  # DECIMAL(10, 2) in the initialization SQL
@@ -128,14 +128,8 @@ def create_booking(
                 status="confirmed",
             ),
         )
-        payment = booking_dao.stage_booking_record(
-            db,
-            Payment(
-                reservation_id=reservation.reservation_id,
-                amount=float(payment_amount),
-                payment_type="booking",
-                payment_status="pending",
-            ),
+        payment = payment_service.create_pending_payment(
+            db, reservation.reservation_id, float(payment_amount)
         )
         response = BookingResponse(
             user_id=user_id,
@@ -174,26 +168,6 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     return booking_dao.get_payment_by_id(db, payment_id, user_id)
 
 
-def _booking_reward_points(amount: float | Decimal) -> int:
-    """Earn one point per whole USD of a supported persisted payment amount."""
-    try:
-        if isinstance(amount, bool) or not isinstance(amount, (int, float, Decimal)):
-            raise ValueError("Payment amount is not numeric")
-        value = Decimal(str(amount))
-        if (
-            not value.is_finite()
-            or value < 0
-            or value > MAX_MONEY
-            or value != value.quantize(MONEY_CENT)
-        ):
-            raise ValueError("Payment amount is outside supported cents")
-        return int(value.to_integral_value(rounding=ROUND_FLOOR))
-    except (InvalidOperation, ValueError) as exc:
-        raise HTTPException(
-            status_code=409, detail="Payment amount is unsupported"
-        ) from exc
-
-
 def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentResponse:
     """Commit one internal payment and its reward award together; no external charge."""
     try:
@@ -219,18 +193,10 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
         payment = booking_dao.lock_booking_payment(db, payment_id, reservation_id)
         if payment is None:
             raise HTTPException(status_code=404, detail="Payment not found")
-        if payment.payment_type != "booking" or reservation.status == "cancelled":
-            raise HTTPException(status_code=409, detail="Payment cannot be completed")
-        if payment.payment_status not in ("pending", "paid"):
-            raise HTTPException(status_code=409, detail="Payment cannot be completed")
-        points = _booking_reward_points(payment.amount)
-        if payment.payment_status == "pending":
-            if reservation.status != "confirmed":
-                raise HTTPException(
-                    status_code=409, detail="Payment cannot be completed"
-                )
-            payment.payment_status = "paid"
-            booking_dao.add_reward_points_to_user(db, user, points=points)
+        transitioned = payment_service.complete_booking_payment(
+            db, user, reservation, payment
+        )
+        if transitioned:
             result = PaymentResponse(**booking_dao.payment_result(payment))
             db.commit()
             return result
@@ -279,14 +245,11 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
         reservation.status = "cancelled"
         if booking_payment.payment_status == "paid":
             booking_payment.payment_status = "refunded"
-        cancellation_payment = Payment(
-            reservation_id=reservation.reservation_id,
-            amount=float(calculate_cancellation_fee(reservation.total_price)),
-            payment_type="cancellation",
-            payment_status="pending",
+        cancellation_payment = payment_service.create_cancellation_payment(
+            db,
+            reservation.reservation_id,
+            float(calculate_cancellation_fee(reservation.total_price)),
         )
-        db.add(cancellation_payment)
-        db.flush()
         response = CancellationResponse(
             reservation_id=reservation.reservation_id,
             status=reservation.status,

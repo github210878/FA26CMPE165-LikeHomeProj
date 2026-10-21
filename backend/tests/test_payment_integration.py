@@ -21,6 +21,7 @@ from app.models.room_type import RoomType
 from app.models.user import User
 from app.routers.booking_router import router as booking_router
 from app.services import booking_service
+from app.services.payment_service import PaymentService
 from app.utilities import auth
 
 
@@ -148,6 +149,26 @@ def test_failed_payment_commit_rolls_back(payment_app, monkeypatch):
             raise SQLAlchemyError("simulated failure")
 
         monkeypatch.setattr(db, "commit", fail_commit)
+        with pytest.raises(Exception) as caught:
+            booking_service.pay_booking_payment(db, 1, 7)
+        assert caught.value.status_code == 500
+        assert caught.value.detail == "Failed to record payment"
+    with Session(engine) as db:
+        assert db.get(Payment, 1).payment_status == "pending"
+        assert db.get(User, 7).reward_points == 0
+
+
+def test_injected_provider_failure_rolls_back(payment_app, monkeypatch):
+    _, engine = payment_app
+
+    class FailingProvider:
+        def authorize(self, payment):
+            raise RuntimeError("provider declined payment")
+
+    monkeypatch.setattr(
+        booking_service, "payment_service", PaymentService(FailingProvider())
+    )
+    with Session(engine) as db:
         with pytest.raises(Exception) as caught:
             booking_service.pay_booking_payment(db, 1, 7)
         assert caught.value.status_code == 500
