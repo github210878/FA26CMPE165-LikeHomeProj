@@ -40,7 +40,10 @@ const quote = {
   likehome_reservation_total: 346.5, likehome_payment_amount: 374.22,
   price_changed: true,
 };
-const bookingResponse = { user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 10, payment_id: 11 };
+const bookingResponse = {
+  user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 10, payment_id: 11,
+  booking_reference: "LH-00000010", status: "confirmed",
+};
 const guest = { guest_full_name: "Person Example", guest_email: "person@example.com" };
 const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
@@ -116,6 +119,19 @@ test("booking sends only selected stay and accepted server quote using Bearer au
   assert.ok(!observed.url.includes("test-user-token"));
   assert.ok(!observed.init.body.includes("test-user-token"));
   assert.ok(!observed.init.body.includes("api_key"));
+});
+
+test("booking response requires a generated reference and confirmed status", async () => {
+  storage();
+  saveAccessToken("test-user-token");
+  const request = bookingRequestFromQuote(selection, quote, guest);
+  for (const invalid of [
+    { ...bookingResponse, booking_reference: "10" },
+    { ...bookingResponse, status: "pending" },
+  ]) {
+    globalThis.fetch = async () => new Response(JSON.stringify(invalid));
+    await assert.rejects(createBooking(request), /unexpected response/);
+  }
 });
 
 test("missing or rejected user session cannot create a booking", async () => {

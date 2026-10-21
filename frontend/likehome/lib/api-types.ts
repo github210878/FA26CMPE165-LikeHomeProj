@@ -72,6 +72,8 @@ export type BookingResponse = {
   room_type_id: number;
   reservation_id: number;
   payment_id: number;
+  booking_reference: string;
+  status: "confirmed";
 };
 
 export type PaymentResponse = {

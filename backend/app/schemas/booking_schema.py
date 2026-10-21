@@ -72,6 +72,8 @@ class BookingResponse(BaseModel):
     room_type_id: int
     reservation_id: int
     payment_id: int
+    booking_reference: str = Field(pattern=r"^LH-\d{8,}$")
+    status: Literal["confirmed"]
 
 
 class PaymentResponse(BaseModel):
