@@ -17,7 +17,9 @@ function isBookingResponse(value: unknown): value is BookingResponse {
     Number.isInteger(value.hotel_id) && (value.hotel_id as number) > 0 &&
     Number.isInteger(value.room_type_id) && (value.room_type_id as number) > 0 &&
     Number.isInteger(value.reservation_id) && (value.reservation_id as number) > 0 &&
-    Number.isInteger(value.payment_id) && (value.payment_id as number) > 0;
+    Number.isInteger(value.payment_id) && (value.payment_id as number) > 0 &&
+    typeof value.booking_reference === "string" && /^LH-\d{8,}$/.test(value.booking_reference) &&
+    value.status === "confirmed";
 }
 
 function isPaymentResponse(value: unknown): value is PaymentResponse {

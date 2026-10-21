@@ -19,10 +19,16 @@ from app.services.cancellation_policy import calculate_cancellation_fee
 
 MONEY_CENT = Decimal("0.01")
 MAX_MONEY = Decimal("99999999.99")  # DECIMAL(10, 2) in the initialization SQL
+BOOKING_REFERENCE_PREFIX = "LH-"
 
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(MONEY_CENT, rounding=ROUND_HALF_UP)
+
+
+def _booking_reference(reservation_id: int) -> str:
+    """Build a stable public reference from the committed reservation identity."""
+    return f"{BOOKING_REFERENCE_PREFIX}{reservation_id:08d}"
 
 
 def create_booking(
@@ -137,6 +143,8 @@ def create_booking(
             room_type_id=room_type_id,
             reservation_id=reservation.reservation_id,
             payment_id=payment.payment_id,
+            booking_reference=_booking_reference(reservation.reservation_id),
+            status=reservation.status,
         )
         db.commit()
         return response

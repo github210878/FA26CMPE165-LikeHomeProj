@@ -109,6 +109,8 @@ def test_stay_pricing_and_single_commit(engine, monkeypatch, check_out, nights, 
         assert len(commits) == 1
         assert isinstance(response, BookingResponse)
         assert response.user_id == 7
+        assert response.booking_reference == f"LH-{response.reservation_id:08d}"
+        assert response.status == "confirmed"
 
     with Session(engine) as db:
         hotel = db.get(Hotel, response.hotel_id)
@@ -555,9 +557,13 @@ def test_create_http_contract_uses_authenticated_user_and_rejects_partner(engine
     )
     assert response.status_code == 200
     assert set(response.json()) == {
-        "user_id", "hotel_id", "room_type_id", "reservation_id", "payment_id"
+        "user_id", "hotel_id", "room_type_id", "reservation_id", "payment_id",
+        "booking_reference", "status",
     }
-    assert response.json()["user_id"] == 7
+    payload = response.json()
+    assert payload["user_id"] == 7
+    assert payload["booking_reference"] == f"LH-{payload['reservation_id']:08d}"
+    assert payload["status"] == "confirmed"
     overlap = client.post(
         "/bookings/create", json=body,
         headers={"Authorization": f"Bearer {user_token}"},
