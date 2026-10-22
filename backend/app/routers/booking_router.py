@@ -5,6 +5,7 @@ from app.config.database import get_db
 from app.schemas.booking_schema import (
     BookingRequest,
     BookingResponse,
+    BookingListItem,
     CancellationResponse,
     PaymentResponse,
 )
@@ -66,7 +67,7 @@ def create_booking(
     return booking_service.create_booking(db, booking_info, user_id)
 
 
-@router.get("/get-all-bookings")
+@router.get("/get-all-bookings", response_model=list[BookingListItem])
 def get_all_bookings(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
