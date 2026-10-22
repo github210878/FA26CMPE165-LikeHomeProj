@@ -144,6 +144,10 @@ def get_all_booking_by_user_id(db: Session, user_id: int):
         .join(RoomType, Reservation.room_type_id == RoomType.room_type_id)
         .join(Hotel, RoomType.hotel_id == Hotel.hotel_id)
         .filter(Reservation.user_id == user_id)
+        .order_by(
+            Reservation.check_in_date.desc(),
+            Reservation.reservation_id.desc(),
+        )
         .all()
     )
 
