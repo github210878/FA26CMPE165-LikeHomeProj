@@ -189,26 +189,49 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
       The current price has changed since your search. Review the updated quote below.
     </p>}
     {notice && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">{notice}</p>}
-    <div className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
+    <div className="rounded-lg border-4 border-double border-slate-200 bg-white p-5 sm:p-6">
+
+      <dl className="my-8 text-center text-slate-700 ">
       <h2 className="text-xl font-semibold text-slate-950">{quote.hotel_name}</h2>
       <p className="mt-2 text-sm text-slate-700">Lowest eligible provider rate for this property and stay</p>
-      <dl className="mt-6 grid gap-4 text-sm text-slate-700 sm:grid-cols-2">
-        <div><dt className="font-medium text-slate-950">Check-in</dt><dd>{quote.check_in_date}</dd></div>
-        <div><dt className="font-medium text-slate-950">Check-out</dt><dd>{quote.check_out_date}</dd></div>
-        <div><dt className="font-medium text-slate-950">Nights</dt><dd>{quote.number_of_nights}</dd></div>
-        <div><dt className="font-medium text-slate-950">Guests</dt><dd>{quote.adults} adults, {quote.children} children</dd></div>
-        <div><dt className="font-medium text-slate-950">Provider listing</dt><dd>{quote.source}</dd></div>
-        <div><dt className="font-medium text-slate-950">Guest capacity</dt><dd>{quote.guest_capacity}</dd></div>
-        <div><dt className="font-medium text-slate-950">Current base nightly average</dt><dd>{dollars.format(quote.current_price_per_night)}</dd></div>
-        {quote.provider_total_with_taxes_fees !== null && <div><dt className="font-medium text-slate-950">Provider listed stay total (reference)</dt><dd>{dollars.format(quote.provider_total_with_taxes_fees)}</dd></div>}
-        <div><dt className="font-medium text-slate-950">Stay subtotal</dt><dd>{dollars.format(priceBreakdown.baseStayTotal)}</dd></div>
-        <div><dt className="font-medium text-slate-950">LikeHome service fee</dt><dd>{dollars.format(priceBreakdown.serviceFee)}</dd></div>
-        <div><dt className="font-medium text-slate-950">LikeHome total with service fee</dt><dd>{dollars.format(quote.likehome_reservation_total)}</dd></div>
-        <div><dt className="font-medium text-slate-950">Tax</dt><dd>{dollars.format(priceBreakdown.tax)}</dd></div>
-        <div className="border-t border-slate-200 pt-4 sm:col-span-2"><dt className="font-semibold text-slate-950">Final booking total</dt><dd className="text-lg font-semibold text-slate-950">{dollars.format(priceBreakdown.finalTotal)} USD</dd></div>
+      
       </dl>
+      
+      
+      
+      <div className="border-dashed border-t border-slate-200 pt-4 sm:col-span-2"></div>
+      <h2 className="text-xl font-semibold text-slate-950"> Booking Details</h2>
+      <dl className="mt-6 grid gap-4 text-sm text-slate-700 sm:grid-cols-2">
+        
+        <div><dt className="font-medium text-slate-950">Check-in:</dt><dd>{quote.check_in_date}</dd></div>
+        <div><dt className="font-medium text-slate-950">Check-out:</dt><dd>{quote.check_out_date}</dd></div>
+        <div><dt className="font-medium text-slate-950">Nights:</dt><dd>{quote.number_of_nights}</dd></div>
+        <div><dt className="font-medium text-slate-950">Guests:</dt><dd>{quote.adults} adults, {quote.children} children</dd></div>
+        <div><dt className="font-medium text-slate-950">Provider listing:</dt><dd>{quote.source}</dd></div>
+        <div><dt className="font-medium text-slate-950">Guest capacity:</dt><dd>{quote.guest_capacity}</dd></div>
+
+        <div className="border-dashed border-t border-slate-200 pt-4 sm:col-span-2"></div>
+
+      </dl>
+      
+      <h2 className="text-xl font-semibold text-slate-950"> Fee Information </h2>
+      <dl className="mt-6 grid gap-4 text-sm text-slate-700 sm:grid-cols-2">        
+        
+        <div><dt className="font-medium text-slate-950">Current base nightly average:</dt><dd>{dollars.format(quote.current_price_per_night)}</dd></div>
+        {quote.provider_total_with_taxes_fees !== null && <div><dt className="font-medium text-slate-950">Provider listed stay total (reference):</dt><dd>{dollars.format(quote.provider_total_with_taxes_fees)}</dd></div>}
+        <div><dt className="font-medium text-slate-950">Stay subtotal:</dt><dd>{dollars.format(priceBreakdown.baseStayTotal)}</dd></div>
+        <div><dt className="font-medium text-slate-950">LikeHome service fee:</dt><dd>{dollars.format(priceBreakdown.serviceFee)}</dd></div>
+        <div><dt className="font-medium text-slate-950">LikeHome total with service fee:</dt><dd>{dollars.format(quote.likehome_reservation_total)}</dd></div>
+        <div><dt className="font-medium text-slate-950">Tax:</dt><dd>{dollars.format(priceBreakdown.tax)}</dd></div>
+        
+        
+        <div className="border-dashed border-t border-slate-200 pt-4 sm:col-span-2"><dt className="font-semibold text-slate-950">Final booking total</dt><dd className="text-lg font-semibold text-slate-950">{dollars.format(priceBreakdown.finalTotal)} USD</dd></div>
+      </dl>
+
       <p className="mt-5 text-sm text-slate-600">Creating your reservation records a pending LikeHome payment. You will review its persisted amount before completing the internal demo payment step. No card is charged.</p>
     </div>
+
+    <div className="flex flex-col items-center">
     {phase === "booking-error" && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">{bookingError}</p>}
     <button type="button" disabled={phase === "submitting" || phase === "booking-error"}
       onClick={() => void confirmBooking()}
@@ -216,5 +239,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
       {phase === "submitting" ? "Creating booking…" : "Reserve and continue to payment"}
     </button>
     {phase === "booking-error" && <button type="button" onClick={() => void refreshQuote()} className="ml-4 min-h-11 font-medium text-teal-700 underline">Refresh quote</button>}
+    </div>
+
   </div>;
 }
