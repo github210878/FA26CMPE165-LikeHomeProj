@@ -1,12 +1,16 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+
 from app.config.database import get_db
 from app.schemas.hotel_schema import (
-    HotelSearchRequest, HotelSearchResponse,
-    HotelDetailsRequest, HotelDetailsResponse,
-    HotelRevalidationRequest, HotelRevalidationResponse,
+    HotelDetailsRequest,
+    HotelDetailsResponse,
+    HotelRevalidationRequest,
+    HotelRevalidationResponse,
+    HotelSearchRequest,
+    HotelSearchResponse,
 )
 from app.services import hotel_service
 

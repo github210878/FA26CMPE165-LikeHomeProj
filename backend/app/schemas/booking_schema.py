@@ -1,6 +1,14 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from datetime import date
 from typing import Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class BookingRequest(BaseModel):
@@ -28,11 +36,15 @@ class BookingRequest(BaseModel):
     room_type_name: str | None = Field(default=None, min_length=1, max_length=100)
     room_type_description: str | None = Field(default=None, max_length=500)
     price_per_night: float = Field(
-        gt=0, le=99999999.99, allow_inf_nan=False,
+        gt=0,
+        le=99999999.99,
+        allow_inf_nan=False,
         description="Accepted revalidation base nightly quote; compared with provider, never authoritative.",
     )
     accepted_payment_amount: float = Field(
-        gt=0, le=99999999.99, allow_inf_nan=False,
+        gt=0,
+        le=99999999.99,
+        allow_inf_nan=False,
         description="User-accepted LikeHome amount from revalidation; compared with the fresh provider-derived quote.",
     )
 

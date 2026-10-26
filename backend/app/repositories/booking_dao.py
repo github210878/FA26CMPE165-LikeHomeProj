@@ -1,9 +1,8 @@
 from datetime import date
 from http.client import HTTPException
 
-from sqlalchemy.orm import Session
 from sqlalchemy import select
-
+from sqlalchemy.orm import Session
 
 from app.models.hotel import Hotel
 from app.models.payment import Payment
@@ -313,3 +312,4 @@ def add_reward_points_to_user(db: Session, user_id: int, points: int):
             status_code=500, detail="Failed to add reward points"
         ) from exc
     return None
+

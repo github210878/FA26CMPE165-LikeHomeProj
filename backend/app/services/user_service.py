@@ -1,17 +1,17 @@
-from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException
 from pwdlib import PasswordHash
+from sqlalchemy.orm import Session
 
 from app.repositories import user_dao
-from app.utilities.auth import create_access_token
 from app.schemas.user_schema import (
-    RegisterUserRequest,
-    RegisterUserResponse,
-    LoginUserRequest,
-    LoginUserResponse,
     ChangePasswordRequest,
     DeleteUserRequest,
+    LoginUserRequest,
+    LoginUserResponse,
+    RegisterUserRequest,
+    RegisterUserResponse,
 )
+from app.utilities.auth import create_access_token, get_current_user_id
 
 PASSWORD_HASHER = PasswordHash.recommended()
 
@@ -43,9 +43,9 @@ def login_user(login_info: LoginUserRequest, db: Session):
     user = user_dao.get_user_by_email(db=db, email=login_info.email.lower())
 
     if (
-            not user
-            or user.status != "active"
-            or not PASSWORD_HASHER.verify(login_info.password, user.password_hash)
+        not user
+        or user.status != "active"
+        or not PASSWORD_HASHER.verify(login_info.password, user.password_hash)
     ):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
@@ -63,6 +63,7 @@ def login_user(login_info: LoginUserRequest, db: Session):
         access_token=access_token,
         token_type="bearer",
     )
+
 
 def change_password(
     change_password_info: ChangePasswordRequest,
@@ -101,9 +102,7 @@ def delete_user(
         raise HTTPException(status_code=401, detail="Password is incorrect")
 
     deleted_user = user_dao.delete_user(db=db, user_id=user_id)
-    if not deleted_user:
-        raise HTTPException(status_code=500, detail="Failed to delete user")
-    elif deleted_user.status != "deleted":
+    if not deleted_user or deleted_user.status != "deleted":
         raise HTTPException(status_code=500, detail="Failed to delete user")
     else:
         return {"status": True, "message": "User deleted successfully"}
@@ -117,3 +116,15 @@ def logout_user(db: Session, user_id: int):
         raise HTTPException(status_code=404, detail="User not found")
 
     return {"status": True, "message": "Logged out successfully"}
+
+
+def get_my_reward_points(db: Session, user_id: int = Depends(get_current_user_id)):
+    """Query reward points by the user_id via user_dao"""
+
+    user = user_dao.get_user_by_id(user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "status": True,
+        "reward_points": user.reward_points,
+    }

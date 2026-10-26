@@ -1,6 +1,8 @@
-from sqlalchemy import DECIMAL, Integer, JSON, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
 from decimal import Decimal
+
+from sqlalchemy import DECIMAL, JSON, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.config.database import Base
 
 

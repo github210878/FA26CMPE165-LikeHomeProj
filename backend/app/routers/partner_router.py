@@ -1,13 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+
 from app.config.database import get_db
 from app.schemas.partner_schema import (
     PartnerLoginRequest,
     PartnerRegisterRequest,
-    PartnerRegisterResponse,
-    CheckBookingRequest,
 )
 from app.services import partner_service
 from app.utilities.auth import get_current_partner_id
