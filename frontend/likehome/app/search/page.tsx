@@ -5,16 +5,16 @@ export const metadata: Metadata = {
   title: "Find a stay | LikeHome",
 };
 
-export default function SearchPage() {
+export default async function SearchPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const query = await searchParams;
+  const value = (key: string) => typeof query[key] === "string" ? query[key] as string : "";
+  const initialSearch = value("destination") ? {
+    destination: value("destination"), checkIn: value("checkIn"),
+    checkOut: value("checkOut"), guests: value("guests") || "1",
+  } : undefined;
   return (
-    <section className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-      <div className="max-w-3xl">
-        <p className="text-sm font-semibold text-teal-700">Find a stay</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-          Where would you like to stay?
-        </h1>
-      </div>
-      <SearchExperience />
-    </section>
+    <SearchExperience key={JSON.stringify(initialSearch)} initialSearch={initialSearch} />
   );
 }

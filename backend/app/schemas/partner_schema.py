@@ -16,13 +16,11 @@ class PartnerRegisterRequest(BaseModel):
 
     @field_validator("hotel_token")
     @classmethod
-    def validate_external_token(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        token = value.strip()
-        if not token or token.startswith(("legacy:", "partner:")):
-            raise ValueError("hotel_token must be a real property token when provided")
-        return token
+    def reject_supplied_token(cls, value: str | None) -> None:
+        # A public property identifier is not proof of hotel ownership.
+        if value is not None:
+            raise ValueError("Public registration cannot use a supplied hotel token")
+        return None
 
 
 class PartnerRegisterResponse(BaseModel):

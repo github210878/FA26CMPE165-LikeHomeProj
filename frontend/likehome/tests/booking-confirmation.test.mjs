@@ -33,7 +33,10 @@ const selection = {
 const quote = {
   current_price_per_night: 165, likehome_payment_amount: 374.22,
 };
-const created = { user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 42, payment_id: 11 };
+const created = {
+  user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 42, payment_id: 11,
+  booking_reference: "LH-00000042", status: "confirmed",
+};
 const guest = { guest_full_name: "Person Example", guest_email: "person@example.com" };
 const persisted = {
   reservation_id: 42, hotel_name: "Example Hotel", room_type_name: "Queen room",
@@ -62,6 +65,8 @@ test("creation opens payment review; only paid persisted state supports confirma
 
   const result = await submitAcceptedQuote(selection, quote, guest, () => assert.fail("Unexpected conflict"));
   assert.equal(result.kind, "created");
+  assert.equal(result.booking.booking_reference, "LH-00000042");
+  assert.equal(result.booking.status, "confirmed");
   assert.equal(paymentHref(result.booking.payment_id), "/payment/11");
   assert.deepEqual(await getPaymentDetails(result.booking.payment_id), pendingPayment);
   assert.deepEqual(await payBookingPayment(result.booking.payment_id), paidPayment);

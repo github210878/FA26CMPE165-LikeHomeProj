@@ -82,7 +82,7 @@ export default function SignupForm() {
                 setStatus("idle");
                 setFeedback("");
               }}
-              className={`mt-2 min-h-11 w-full rounded-lg border bg-white px-3 py-2 text-base text-slate-950 ${error ? "border-red-600" : "border-slate-300"}`}
+              className={`mt-2 min-h-12 w-full rounded-xl border bg-white px-3 py-2 text-base text-slate-950 ${error ? "border-red-600" : "border-slate-300"}`}
             />
             {error && <p id={`${field.name}-error`} aria-live="polite" className="mt-2 text-sm text-red-700">{error}</p>}
           </div>
@@ -94,7 +94,7 @@ export default function SignupForm() {
         Show passwords
       </label>
 
-      <button type="submit" disabled={status === "submitting"} className="min-h-12 w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
+      <button type="submit" disabled={status === "submitting"} className="min-h-12 w-full rounded-full bg-teal-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
         {status === "submitting" ? "Creating account…" : "Continue"}
       </button>
       <div role="status" aria-live="polite">

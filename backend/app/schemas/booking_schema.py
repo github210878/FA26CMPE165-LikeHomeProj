@@ -84,6 +84,8 @@ class BookingResponse(BaseModel):
     room_type_id: int
     reservation_id: int
     payment_id: int
+    booking_reference: str = Field(pattern=r"^LH-\d{8,}$")
+    status: Literal["confirmed"]
 
 
 class PaymentResponse(BaseModel):
@@ -102,3 +104,18 @@ class CancellationResponse(BaseModel):
     cancellation_payment_id: int
     cancellation_amount: float
     cancellation_payment_status: Literal["pending"]
+
+
+class BookingListItem(BaseModel):
+    reservation_id: int = Field(gt=0)
+    hotel_name: str
+    room_type_name: str
+    hotel_address: str
+    hotel_phone: str | None
+    hotel_description: str | None
+    room_description: str | None
+    check_in_date: date
+    check_out_date: date
+    price_per_night: float
+    total_price: float
+    status: Literal["confirmed", "cancelled", "completed"]

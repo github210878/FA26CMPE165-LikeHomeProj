@@ -26,7 +26,7 @@ export default function ResponsiveHeader() {
   return (
     <div>
       <SiteHeader links={links} status={status} signingOut={signingOut}
-        openHead={() => setShowHead(true)} signOut={handleSignOut} />
+        showHead={showHead} openHead={() => setShowHead((open) => !open)} signOut={handleSignOut} />
       <MobileHeader links={links} status={status} signingOut={signingOut}
         showHead={showHead} closeHead={() => setShowHead(false)} signOut={handleSignOut} />
       {notice && <p role="status" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{notice}</p>}

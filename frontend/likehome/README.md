@@ -97,3 +97,41 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Visual theme
+
+The LikeHome interface uses a soft green palette inspired by the team's Pear
+presentation, with warm off-white backgrounds, forest-green actions, and rounded
+cards. Shared colors and layout classes live in `app/globals.css`. The existing
+Tailwind teal and slate tokens are mapped to this palette so booking, payment,
+and error states stay consistent with the homepage and account pages.
+
+The homepage hero is a photograph from [Pexels](https://www.pexels.com/photo/9956964/),
+stored locally at `public/images/lakeside-cabin.jpg` and used under the
+[Pexels License](https://www.pexels.com/license/).
+It is decorative travel imagery, not an advertised bookable property.
+
+The homepage follows the supplied hotel-search reference: a full-width room
+photo, an inline search form, and destination cards. Complete homepage searches
+open the results page and run once; destination cards prefill the city so dates
+can be chosen. Destination cards show inspiration, not live inventory counts.
+
+Destination imagery is stored locally from Unsplash:
+- Los Angeles: `photo-1444723121867-7a241cacace9`
+- San Francisco: `photo-1501594907352-04cda38ebc29`
+- Seattle: `photo-1538097304804-2a1b932466a9`
+- Santorini: `photo-1533104816931-20fa691ff6ca`
+
+Find a Stay uses separate Unsplash photographs for its Italian coastal hero and
+destination inspiration cards, under the Unsplash License:
+- Italian coast hero: `photo-1516483638261-f4dbaf036963`
+- New York City: `photo-1485871981521-5b1fd3805eee`
+- Tokyo: `photo-1513407030348-c983a97b98d8`
+- Lake Tahoe (Michael Wilson): `photo-1562989092-4471fd63f532`
+- Paris (Chris Karidis): `photo-1502602898657-3e91760cbb34`
+
+The sign-in side panel uses a real [waterfront terrace photograph from Pexels](https://www.pexels.com/photo/terrace-overlooking-sea-19075384/),
+stored at `public/images/signin-seaview.jpg`, under the Pexels License.
+
+The sign-up panel uses the user-supplied Santorini photograph, stored at
+`public/images/signup-greece.png`.

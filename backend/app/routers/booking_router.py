@@ -1,20 +1,55 @@
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
 from app.schemas.booking_schema import (
     BookingRequest,
     BookingResponse,
+    BookingListItem,
     CancellationResponse,
     PaymentResponse,
 )
 from app.services import booking_service
+from app.schemas.reservation_change_schema import (
+    ReservationChangeQuoteResponse,
+    ReservationChangeReviewRequest,
+)
+from app.services import reservation_change_quote_service
+from app.schemas.reservation_change_payment_schema import ReservationFinancialSummary
+from app.services import reservation_financial_summary_service
 from app.utilities.auth import get_current_user_id
 
 router = APIRouter(
     prefix="/bookings",
     tags=["Bookings"],
 )
+
+
+async def _financial_summary_read_request(request: Request) -> None:
+    if request.query_params or await request.body():
+        raise HTTPException(status_code=422, detail="Financial summary accepts no query parameters or body")
+
+
+@router.get("/{reservation_id}/financial-summary", response_model=ReservationFinancialSummary)
+def get_reservation_financial_summary(
+    reservation_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+    _request: None = Depends(_financial_summary_read_request),
+):
+    """Read this customer's pre-change financial state; revision 0 is a convention."""
+    return reservation_financial_summary_service.get_financial_summary(db, reservation_id, user_id)
+
+
+@router.post("/{reservation_id}/change-quote", response_model=ReservationChangeQuoteResponse)
+def quote_reservation_change(
+    reservation_id: int,
+    review: ReservationChangeReviewRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Review a same-property date change; this does not change or hold a booking."""
+    return reservation_change_quote_service.create_change_quote(db, reservation_id, review, user_id)
 
 
 @router.post("/create", response_model=BookingResponse)
@@ -32,7 +67,7 @@ def create_booking(
     return booking_service.create_booking(db, booking_info, user_id)
 
 
-@router.get("/get-all-bookings")
+@router.get("/get-all-bookings", response_model=list[BookingListItem])
 def get_all_bookings(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),

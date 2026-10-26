@@ -17,15 +17,23 @@ from app.schemas.booking_schema import (
 )
 from app.schemas.hotel_schema import HotelRevalidationRequest
 from app.services import hotel_service
+from app.services.cancellation_policy import calculate_cancellation_fee
+from app.services.payment_service import payment_service
 
 cancellation_fee = Constants.CANCELLATION_FEE
 reward_points_per_dollor = Constants.REWARD_POINTS_PER_DOLLAR
 MONEY_CENT = Decimal("0.01")
 MAX_MONEY = Decimal("99999999.99")  # DECIMAL(10, 2) in the initialization SQL
+BOOKING_REFERENCE_PREFIX = "LH-"
 
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(MONEY_CENT, rounding=ROUND_HALF_UP)
+
+
+def _booking_reference(reservation_id: int) -> str:
+    """Build a stable public reference from the committed reservation identity."""
+    return f"{BOOKING_REFERENCE_PREFIX}{reservation_id:08d}"
 
 
 def create_booking(
@@ -125,14 +133,8 @@ def create_booking(
                 status="confirmed",
             ),
         )
-        payment = booking_dao.stage_booking_record(
-            db,
-            Payment(
-                reservation_id=reservation.reservation_id,
-                amount=float(payment_amount),
-                payment_type="booking",
-                payment_status="pending",
-            ),
+        payment = payment_service.create_pending_payment(
+            db, reservation.reservation_id, float(payment_amount)
         )
         response = BookingResponse(
             user_id=user_id,
@@ -140,6 +142,8 @@ def create_booking(
             room_type_id=room_type_id,
             reservation_id=reservation.reservation_id,
             payment_id=payment.payment_id,
+            booking_reference=_booking_reference(reservation.reservation_id),
+            status=reservation.status,
         )
         db.commit()
         return response
@@ -170,7 +174,7 @@ def get_payment_by_id(db: Session, payment_id: int, user_id: int):
 
 
 def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentResponse:
-    """Mark one owned booking payment paid inside LikeHome; no external charge occurs."""
+    """Commit one internal payment and its reward award together; no external charge."""
     try:
         reservation_id = booking_dao.get_owned_payment_reservation_id(
             db, payment_id, user_id
@@ -178,31 +182,34 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
         if reservation_id is None:
             raise HTTPException(status_code=404, detail="Payment not found")
         # Authentication and ownership reads may have opened a REPEATABLE READ
-        # snapshot. Lock the reservation first, matching cancellation order.
+        # snapshot. Start fresh, then lock User -> Reservation -> ordered Payments.
+        # Booking creation also locks User first; cancellation locks only the
+        # Reservation -> Payments suffix and never updates rewards.
         db.rollback()
+        user = booking_dao.lock_active_user_for_payment(db, user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=401, detail="User is inactive or does not exist",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         reservation = booking_dao.lock_owned_reservation(db, reservation_id, user_id)
         if reservation is None:
             raise HTTPException(status_code=404, detail="Payment not found")
         payment = booking_dao.lock_booking_payment(db, payment_id, reservation_id)
         if payment is None:
             raise HTTPException(status_code=404, detail="Payment not found")
-        if payment.payment_type != "booking" or reservation.status == "cancelled":
-            raise HTTPException(status_code=409, detail="Payment cannot be completed")
-        if payment.payment_status not in ("pending", "paid"):
-            raise HTTPException(status_code=409, detail="Payment cannot be completed")
-        if payment.payment_status == "pending":
-            if reservation.status != "confirmed":
-                raise HTTPException(
-                    status_code=409, detail="Payment cannot be completed"
-                )
-            payment.payment_status = "paid"
+        transitioned = payment_service.complete_booking_payment(
+            db, user, reservation, payment
+        )
+        if transitioned:
             result = PaymentResponse(**booking_dao.payment_result(payment))
             db.commit()
-            booking_dao.add_reward_points_to_user(
-                db, user_id, points=payment.amount
-            )  # Add reward points for the booking payment
             return result
-        return PaymentResponse(**booking_dao.payment_result(payment))
+        # Paid is the award marker for new atomic transitions. Never infer a
+        # missing historical award from the aggregate balance or retry it here.
+        result = PaymentResponse(**booking_dao.payment_result(payment))
+        db.rollback()
+        return result
     except HTTPException:
         db.rollback()
         raise
@@ -243,14 +250,11 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
         reservation.status = "cancelled"
         if booking_payment.payment_status == "paid":
             booking_payment.payment_status = "refunded"
-        cancellation_payment = Payment(
-            reservation_id=reservation.reservation_id,
-            amount=reservation.total_price * cancellation_fee,
-            payment_type="cancellation",
-            payment_status="pending",
+        cancellation_payment = payment_service.create_cancellation_payment(
+            db,
+            reservation.reservation_id,
+            float(calculate_cancellation_fee(reservation.total_price)),
         )
-        db.add(cancellation_payment)
-        db.flush()
         response = CancellationResponse(
             reservation_id=reservation.reservation_id,
             status=reservation.status,

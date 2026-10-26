@@ -1,5 +1,5 @@
 from datetime import date
-from http.client import HTTPException
+from fastapi import HTTPException
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +9,19 @@ from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.models.user import User
+
+MAX_REWARD_POINTS = 2_147_483_647  # Signed INT in the initialization SQL.
+
+
+def lock_active_user_for_payment(db: Session, user_id: int) -> User | None:
+    """Lock and refresh the reward owner before locking reservation/payment rows."""
+    return (
+        db.query(User)
+        .filter(User.user_id == user_id, User.status == "active")
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
 
 
 def lock_user_for_booking(db: Session, user_id: int) -> bool:
@@ -130,6 +143,10 @@ def get_all_booking_by_user_id(db: Session, user_id: int):
         .join(RoomType, Reservation.room_type_id == RoomType.room_type_id)
         .join(Hotel, RoomType.hotel_id == Hotel.hotel_id)
         .filter(Reservation.user_id == user_id)
+        .order_by(
+            Reservation.check_in_date.desc(),
+            Reservation.reservation_id.desc(),
+        )
         .all()
     )
 
@@ -244,14 +261,22 @@ def lock_owned_reservation(db: Session, reservation_id: int, user_id: int):
 
 
 def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
-    return (
+    """Lock the complete history in ID order; never choose among duplicate charges."""
+    payments = (
         db.query(Payment)
-        .filter(
-            Payment.payment_id == payment_id, Payment.reservation_id == reservation_id
-        )
+        .filter(Payment.reservation_id == reservation_id)
+        .order_by(Payment.payment_id)
+        .populate_existing()
         .with_for_update()
-        .first()
+        .all()
     )
+    if not any(payment.payment_id == payment_id for payment in payments):
+        return None
+    if len(payments) != 1 or payments[0].payment_type != "booking":
+        raise HTTPException(
+            status_code=409, detail="Reservation payment state is ambiguous"
+        )
+    return payments[0]
 
 
 def check_if_user_booked_by_date_range(
@@ -297,17 +322,13 @@ def get_payments_for_cancellation(db: Session, reservation_id: int):
     )
 
 
-def add_reward_points_to_user(db: Session, user_id: int, points: int):
-    """Add reward points to the user's account."""
-    user = db.query(User).filter(User.user_id == user_id).first()
-    try:
-        if user:
-            user.reward_points += points
-            db.commit()
-            db.refresh(user)
-            return user
-    except Exception as exc:
-        db.rollback()
+def add_reward_points_to_user(db: Session, user: User, points: int):
+    """Stage an integer award on the caller's already-locked, fresh User row.
+
+    The caller must hold User -> Reservation -> Payments locks and owns the
+    commit/rollback. A flush surfaces database failures inside that transaction.
+    """
+    if user is None or user.status != "active":
         raise HTTPException(
             status_code=500, detail="Failed to add reward points"
         ) from exc

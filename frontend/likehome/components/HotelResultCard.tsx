@@ -16,8 +16,8 @@ export default function HotelResultCard({ hotel, checkoutHref }: { hotel: HotelS
   const thumbnail = getHotelThumbnailUrl(hotel.thumbnail);
 
   return (
-    <article className="h-full min-w-0 rounded-xl border border-slate-200 bg-white p-5">
-      <div className="mb-4 aspect-video overflow-hidden rounded-lg bg-slate-100">
+    <article className="group h-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-lg hover:shadow-slate-900/5 sm:p-5">
+      <div className="mb-4 aspect-video overflow-hidden rounded-xl bg-slate-100">
         {thumbnail && failedThumbnail !== thumbnail ? (
           // Provider image hosts vary, so Next.js remote image allowlisting is not suitable here.
           // eslint-disable-next-line @next/next/no-img-element
@@ -56,7 +56,7 @@ export default function HotelResultCard({ hotel, checkoutHref }: { hotel: HotelS
         </p>
       )}
       {checkoutHref && (
-        <Link href={checkoutHref} prefetch={false} className="mt-5 inline-flex min-h-11 items-center rounded-md bg-teal-700 px-4 font-medium text-white hover:bg-teal-800">
+        <Link href={checkoutHref} prefetch={false} className="mt-5 inline-flex min-h-11 items-center rounded-full bg-teal-700 px-4 font-medium text-white hover:bg-teal-800">
           Select stay
         </Link>
       )}

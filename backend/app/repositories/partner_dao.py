@@ -1,3 +1,4 @@
+from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.partner_model import HotelPartner
@@ -60,8 +61,36 @@ def get_partner_by_id(db: Session, partner_id: int):
     return db.query(HotelPartner).filter(HotelPartner.partner_id == partner_id).first()
 
 
-def get_hotel_id_by_partner_id(db: Session, partner_id: int):
-    partner = get_partner_by_id(db, partner_id)
-    if partner:
-        return partner.hotel_id
-    return None
+def get_hotel_id_by_partner_id(db: Session, partner_id: int) -> int | None:
+    """Return only an unambiguous, server-created internal hotel association.
+
+    External/legacy tokens were publicly claimable before this fix and cannot
+    establish ownership. The existing server-generated partner UUIDv4 namespace
+    was never accepted from public callers. This is provenance for an isolated
+    application hotel, not verification of ownership of a provider-listed hotel.
+    """
+    records = (
+        db.query(HotelPartner, Hotel)
+        .join(Hotel, HotelPartner.hotel_id == Hotel.hotel_id)
+        .filter(HotelPartner.partner_id == partner_id)
+        .first()
+    )
+    if records is None:
+        return None
+    partner, hotel = records
+    token = hotel.hotel_token
+    if not isinstance(token, str) or not token.startswith("partner:"):
+        return None
+    try:
+        identifier = UUID(token.removeprefix("partner:"))
+    except ValueError:
+        return None
+    if (
+        identifier.version != 4 or token != f"partner:{identifier}"
+        or partner.hotel_token != token
+    ):
+        return None
+    # With no verified co-owner mechanism, shared associations are ambiguous.
+    if db.query(HotelPartner).filter(HotelPartner.hotel_id == hotel.hotel_id).count() != 1:
+        return None
+    return hotel.hotel_id

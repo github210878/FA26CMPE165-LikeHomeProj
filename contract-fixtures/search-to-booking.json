@@ -55,6 +55,8 @@
     "hotel_id": 1,
     "room_type_id": 1,
     "reservation_id": 1,
-    "payment_id": 1
+    "payment_id": 1,
+    "booking_reference": "LH-00000001",
+    "status": "confirmed"
   }
 }

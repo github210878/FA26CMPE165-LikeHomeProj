@@ -185,7 +185,10 @@ test("displaying a validated quote adds no requests and reservation keeps accept
   globalThis.fetch = async (url, init) => {
     calls.push({ path: new URL(url).pathname, init });
     if (url.endsWith("/hotels/revalidate")) return new Response(JSON.stringify(quote));
-    if (url.endsWith("/bookings/create")) return new Response(JSON.stringify({ user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 10, payment_id: 11 }));
+    if (url.endsWith("/bookings/create")) return new Response(JSON.stringify({
+      user_id: 7, hotel_id: 8, room_type_id: 9, reservation_id: 10, payment_id: 11,
+      booking_reference: "LH-00000010", status: "confirmed",
+    }));
     throw new Error("Unexpected request");
   };
   const harness = checkoutHarness(await revalidateHotel(selection));

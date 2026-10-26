@@ -21,6 +21,7 @@ from app.models.room_type import RoomType
 from app.models.user import User
 from app.routers.booking_router import router as booking_router
 from app.services import booking_service
+from app.services.payment_service import PaymentService
 from app.utilities import auth
 
 
@@ -86,6 +87,7 @@ def test_owner_pays_persisted_amount_once_and_reads_typed_details(payment_app):
         assert len(payments) == 1
         assert payments[0].amount == 226.8
         assert payments[0].payment_status == "paid"
+        assert db.get(User, 7).reward_points == 226
 
 
 def test_nonowner_partner_and_missing_payment_cannot_read_or_pay(payment_app):
@@ -136,6 +138,7 @@ def test_pending_booking_cancellation_does_not_claim_refund(payment_app):
     with Session(engine) as db:
         assert db.get(Payment, 1).payment_status == "pending"
         assert db.get(Payment, 2).payment_type == "cancellation"
+        assert db.get(User, 7).reward_points == 0
 
 
 def test_failed_payment_commit_rolls_back(payment_app, monkeypatch):
@@ -152,6 +155,27 @@ def test_failed_payment_commit_rolls_back(payment_app, monkeypatch):
         assert caught.value.detail == "Failed to record payment"
     with Session(engine) as db:
         assert db.get(Payment, 1).payment_status == "pending"
+        assert db.get(User, 7).reward_points == 0
+
+
+def test_injected_provider_failure_rolls_back(payment_app, monkeypatch):
+    _, engine = payment_app
+
+    class FailingProvider:
+        def authorize(self, payment):
+            raise RuntimeError("provider declined payment")
+
+    monkeypatch.setattr(
+        booking_service, "payment_service", PaymentService(FailingProvider())
+    )
+    with Session(engine) as db:
+        with pytest.raises(Exception) as caught:
+            booking_service.pay_booking_payment(db, 1, 7)
+        assert caught.value.status_code == 500
+        assert caught.value.detail == "Failed to record payment"
+    with Session(engine) as db:
+        assert db.get(Payment, 1).payment_status == "pending"
+        assert db.get(User, 7).reward_points == 0
 
 
 def test_payment_locks_reservation_then_existing_payment(payment_app, monkeypatch):
@@ -159,8 +183,13 @@ def test_payment_locks_reservation_then_existing_payment(payment_app, monkeypatc
     order = []
     from app.repositories import booking_dao
 
+    original_user = booking_dao.lock_active_user_for_payment
     original_reservation = booking_dao.lock_owned_reservation
     original_payment = booking_dao.lock_booking_payment
+
+    def lock_user(*args):
+        order.append("user")
+        return original_user(*args)
 
     def lock_reservation(*args):
         order.append("reservation")
@@ -170,11 +199,12 @@ def test_payment_locks_reservation_then_existing_payment(payment_app, monkeypatc
         order.append("payment")
         return original_payment(*args)
 
+    monkeypatch.setattr(booking_dao, "lock_active_user_for_payment", lock_user)
     monkeypatch.setattr(booking_dao, "lock_owned_reservation", lock_reservation)
     monkeypatch.setattr(booking_dao, "lock_booking_payment", lock_payment)
     with Session(engine) as db:
         assert booking_service.pay_booking_payment(db, 1, 7).payment_status == "paid"
-    assert order == ["reservation", "payment"]
+    assert order == ["user", "reservation", "payment"]
 
 
 def test_only_first_pay_commits(payment_app, monkeypatch):
@@ -192,44 +222,97 @@ def test_only_first_pay_commits(payment_app, monkeypatch):
         assert booking_service.pay_booking_payment(db, 1, 7).payment_status == "paid"
         assert booking_service.pay_booking_payment(db, 1, 7).payment_status == "paid"
         assert commits == 1
+    with Session(engine) as db:
+        assert db.get(User, 7).reward_points == 226
 
 
-def test_two_serialized_pay_attempts_share_one_transition(monkeypatch):
-    """Model the InnoDB row wait; only the first waiter changes the existing row."""
+@pytest.fixture
+def serialized_payment_store(monkeypatch):
+    """Transaction-local copies behind a User mutex; not an InnoDB lock test.
+
+    The production reward helper runs against a fresh locked User copy. Flush
+    stages both records; only commit publishes them, and rollback discards them.
+    """
     from app.repositories import booking_dao
 
-    row_lock = Lock()
-    start = Barrier(2)
-    commits = []
-    payment = SimpleNamespace(payment_id=1, reservation_id=1, amount=226.8,
-                              payment_type="booking", payment_status="pending")
-    reservation = SimpleNamespace(status="confirmed")
+    store = SimpleNamespace(
+        lock=Lock(), user=SimpleNamespace(user_id=7, status="active", reward_points=0),
+        payments={1: SimpleNamespace(payment_id=1, reservation_id=1, amount=226.8,
+                                     payment_type="booking", payment_status="pending")},
+        commits=[], awards=[], lock_orders=[],
+    )
 
     class Transaction:
         def __init__(self):
             self.owns_lock = False
+            self.order = []
+            self.payment = None
+            self.user = None
+            self.fail_flush = False
+            self.fail_commit = False
 
         def rollback(self):
+            self.payment = self.user = None
             if self.owns_lock:
-                row_lock.release()
+                store.lock_orders.append(self.order[:])
+                store.lock.release()
                 self.owns_lock = False
 
+        def flush(self):
+            assert self.owns_lock and self.order == ["user", "reservation", "payment"]
+            if self.fail_flush:
+                raise SQLAlchemyError("synthetic staged reward failure")
+
         def commit(self):
-            commits.append(payment.payment_status)
+            self.flush()
+            if self.fail_commit:
+                raise SQLAlchemyError("synthetic atomic commit failure")
+            store.awards.append(self.user.reward_points - store.user.reward_points)
+            store.user.reward_points = self.user.reward_points
+            vars(store.payments[self.payment.payment_id]).update(vars(self.payment))
+            store.commits.append(self.payment.payment_status)
             self.rollback()
 
-    def lock_reservation(db, reservation_id, user_id):
-        row_lock.acquire()
+    def lock_user(db, user_id):
+        assert store.lock.acquire(timeout=5), "Modeled User lock timed out"
         db.owns_lock = True
-        return reservation
+        db.order.append("user")
+        if user_id != store.user.user_id or store.user.status != "active":
+            return None
+        db.user = SimpleNamespace(**vars(store.user))
+        return db.user
 
-    monkeypatch.setattr(booking_dao, "get_owned_payment_reservation_id", lambda *_: 1)
+    def lock_reservation(db, reservation_id, user_id):
+        assert db.owns_lock and db.order == ["user"]
+        db.order.append("reservation")
+        if user_id == store.user.user_id:
+            return SimpleNamespace(reservation_id=reservation_id, user_id=user_id, status="confirmed")
+
+    def lock_payment(db, payment_id, reservation_id):
+        assert db.order == ["user", "reservation"]
+        db.order.append("payment")
+        row = store.payments[payment_id]
+        assert row.reservation_id == reservation_id
+        db.payment = SimpleNamespace(**vars(row))
+        return db.payment
+
+    monkeypatch.setattr(booking_dao, "get_owned_payment_reservation_id",
+                        lambda db, payment_id, user_id: store.payments[payment_id].reservation_id)
+    monkeypatch.setattr(booking_dao, "lock_active_user_for_payment", lock_user)
     monkeypatch.setattr(booking_dao, "lock_owned_reservation", lock_reservation)
-    monkeypatch.setattr(booking_dao, "lock_booking_payment", lambda *_: payment)
+    monkeypatch.setattr(booking_dao, "lock_booking_payment", lock_payment)
+    store.Transaction = Transaction
+    return store
+
+
+def test_two_serialized_pay_attempts_share_one_transition(serialized_payment_store):
+    """Model complete payment/reward transactions; this is not an engine race."""
+    store = serialized_payment_store
+    start = Barrier(2)
 
     def pay():
-        db = Transaction()
-        start.wait()
+        db = store.Transaction()
+        start.wait(timeout=5)
         try:
             return booking_service.pay_booking_payment(db, 1, 7)
         finally:
@@ -238,5 +321,8 @@ def test_two_serialized_pay_attempts_share_one_transition(monkeypatch):
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda _: pay(), range(2)))
     assert [result.payment_status for result in results] == ["paid", "paid"]
-    assert commits == ["paid"]
-    assert payment.payment_status == "paid"
+    assert store.commits == ["paid"]
+    assert store.payments[1].payment_status == "paid"
+    assert store.awards == [226]
+    assert store.user.reward_points == 226
+    assert store.lock_orders == [["user", "reservation", "payment"]] * 2
