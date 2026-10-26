@@ -122,7 +122,9 @@ def pay_booking_payment(
 ):
     """Record an internal LikeHome payment for the current user's reservation."""
     if body is not None:
-        raise HTTPException(status_code=422, detail="Payment request must not contain a body")
+        raise HTTPException(
+            status_code=422, detail="Payment request must not contain a body"
+        )
     return booking_service.pay_booking_payment(db, payment_id, user_id)
 
 
@@ -136,3 +138,13 @@ def cancel_booking(
     Cancel a booking for the current user.
     """
     return booking_service.cancel_booking(db, reservation_id, user_id)
+
+
+@router.post("/pay-cancellation-fee/{payment_id}", response_model=PaymentResponse)
+def pay_cancellation_fee(
+    payment_id: int, db: Session = Depends(get_db), user_id=Depends(get_current_user_id)
+):
+    """Pay cancellation payment"""
+    return booking_service.pay_cancellation_fee(
+        db, payment_id=payment_id, user_id=user_id
+    )

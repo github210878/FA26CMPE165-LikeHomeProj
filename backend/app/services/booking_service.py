@@ -1,22 +1,27 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+
+from app.config.constants import Constants
 from app.models.hotel import Hotel
+from app.models.payment import Payment
+from app.models.reservation import Reservation
+from app.models.room_type import RoomType
+from app.repositories import booking_dao, user_dao
 from app.schemas.booking_schema import (
-    BookingResponse,
     BookingRequest,
+    BookingResponse,
     CancellationResponse,
     PaymentResponse,
 )
-from app.repositories import booking_dao
-from app.models.reservation import Reservation
-from app.models.room_type import RoomType
 from app.schemas.hotel_schema import HotelRevalidationRequest
 from app.services import hotel_service
 from app.services.cancellation_policy import calculate_cancellation_fee
 from app.services.payment_service import payment_service
 
+cancellation_fee = Constants.CANCELLATION_FEE
+reward_points_per_dollor = Constants.REWARD_POINTS_PER_DOLLAR
 MONEY_CENT = Decimal("0.01")
 MAX_MONEY = Decimal("99999999.99")  # DECIMAL(10, 2) in the initialization SQL
 BOOKING_REFERENCE_PREFIX = "LH-"
@@ -269,3 +274,93 @@ def cancel_booking(db: Session, booking_id: int, user_id: int) -> CancellationRe
         raise HTTPException(
             status_code=500, detail="Failed to cancel reservation"
         ) from exc
+
+
+def pay_cancellation_fee(db: Session, payment_id: int, user_id: int) -> PaymentResponse:
+    """Mark one owned cancellation fee paid inside LikeHome; no external charge occurs."""
+    try:
+        reservation_id = booking_dao.get_owned_payment_reservation_id(
+            db, payment_id, user_id
+        )
+        if reservation_id is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+
+        db.rollback()
+        reservation = booking_dao.lock_owned_reservation(db, reservation_id, user_id)
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+
+        payment = booking_dao.lock_booking_payment(db, payment_id, reservation_id)
+        if payment is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+
+        if payment.payment_type != "cancellation" or reservation.status != "cancelled":
+            raise HTTPException(status_code=409, detail="Payment cannot be completed")
+
+        if payment.payment_status not in ("pending", "paid"):
+            raise HTTPException(status_code=409, detail="Payment cannot be completed")
+
+        if payment.payment_status == "pending":
+            payment.payment_status = "paid"
+            result = PaymentResponse(**booking_dao.payment_result(payment))
+            db.commit()
+            return result
+
+        return PaymentResponse(**booking_dao.payment_result(payment))
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to record payment") from exc
+
+
+def pay_with_reward_points(
+    db: Session, payment_id: int, user_id: int
+) -> PaymentResponse:
+    """User reward points to pay a payment"""
+    try:
+        reservation_id = booking_dao.get_owned_payment_reservation_id(
+            db, payment_id, user_id
+        )
+        if reservation_id is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        # Authentication and ownership reads may have opened a REPEATABLE READ
+        # snapshot. Lock the reservation first, matching cancellation order.
+        db.rollback()
+        reservation = booking_dao.lock_owned_reservation(db, reservation_id, user_id)
+        if reservation is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        payment = booking_dao.lock_booking_payment(db, payment_id, reservation_id)
+        if payment is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        if payment.payment_type != "booking" or reservation.status == "cancelled":
+            raise HTTPException(status_code=409, detail="Payment cannot be completed")
+        if payment.payment_status not in ("pending", "paid"):
+            raise HTTPException(status_code=409, detail="Payment cannot be completed")
+        if payment.payment_status == "pending":
+            if reservation.status != "confirmed":
+                raise HTTPException(
+                    status_code=409, detail="Payment cannot be completed"
+                )
+            user = user_dao.get_user_by_id(user_id=user_id)
+            if user.reward_points * reward_points_per_dollor < payment.amount:
+                raise HTTPException(status_code=409, detail="Not enough reward points")
+            user_dao.decrease_reward_points(
+                db=db, user_id=user_id, amount=payment.amount * reward_points_per_dollor
+            )
+            payment.payment_status = "paid"
+            result = PaymentResponse(**booking_dao.payment_result(payment))
+            db.commit()
+            booking_dao.add_reward_points_to_user(
+                db, user_id, points=payment.amount
+            )  # Add reward points for the booking payment
+            return result
+        return PaymentResponse(**booking_dao.payment_result(payment))
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to record payment") from exc

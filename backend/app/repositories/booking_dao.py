@@ -1,9 +1,8 @@
 from datetime import date
 from fastapi import HTTPException
 
-from sqlalchemy.orm import Session
 from sqlalchemy import select
-
+from sqlalchemy.orm import Session
 
 from app.models.hotel import Hotel
 from app.models.payment import Payment
@@ -331,16 +330,7 @@ def add_reward_points_to_user(db: Session, user: User, points: int):
     """
     if user is None or user.status != "active":
         raise HTTPException(
-            status_code=401, detail="User is inactive or does not exist",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    balance = user.reward_points
-    if (
-        type(points) is not int or points < 0
-        or type(balance) is not int or balance < 0
-        or balance > MAX_REWARD_POINTS
-        or points > MAX_REWARD_POINTS - balance
-    ):
-        raise HTTPException(status_code=409, detail="Reward balance is unsupported")
-    user.reward_points = balance + points
-    db.flush()
+            status_code=500, detail="Failed to add reward points"
+        ) from exc
+    return None
+

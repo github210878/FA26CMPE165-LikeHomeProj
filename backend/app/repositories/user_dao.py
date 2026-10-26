@@ -58,3 +58,13 @@ def invalidate_user_sessions(db: Session, user_id: int):
         db.commit()
         db.refresh(user)
     return user
+
+
+def decrease_reward_points(db: Session, user_id: int, amount: int):
+    user = db.query(User).filter(User.user_id == user_id).first()
+    pre_points = user.reward_points
+    if user:
+        user.reward_points = pre_points - amount
+        db.commit()
+        db.refresh(user)
+    return user

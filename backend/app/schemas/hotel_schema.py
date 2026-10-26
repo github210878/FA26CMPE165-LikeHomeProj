@@ -1,9 +1,15 @@
 import re
 from datetime import date
-
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class HotelSearchRequest(BaseModel):
@@ -204,7 +210,10 @@ class HotelRevalidationRequest(BaseModel):
     gl: Literal["us"] = "us"
     hl: Literal["en"] = "en"
     displayed_price_per_night: float | None = Field(
-        default=None, gt=0, le=99999999.99, allow_inf_nan=False,
+        default=None,
+        gt=0,
+        le=99999999.99,
+        allow_inf_nan=False,
         description="Optional search-card price used only to flag a change; never used for pricing.",
     )
 

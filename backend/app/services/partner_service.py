@@ -1,18 +1,17 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from fastapi import HTTPException
 from uuid import uuid4
+
+from pwdlib import PasswordHash
+from sqlalchemy.orm import Session
+
+from app.models.hotel import Hotel
 from app.models.partner_model import HotelPartner as Partner
+from app.repositories import booking_dao, partner_dao
 from app.schemas.partner_schema import (
     PartnerLoginRequest,
     PartnerLoginResponse,
     PartnerRegisterRequest,
     PartnerRegisterResponse,
 )
-from app.models.hotel import Hotel
-from pwdlib import PasswordHash
-
-from app.repositories import partner_dao
 from app.utilities.auth import create_access_token
 
 PASSWORD_HASHER = PasswordHash.recommended()

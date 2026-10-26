@@ -1,12 +1,11 @@
 from uuid import UUID
 from sqlalchemy.orm import Session
 
-from app.models.room_type import RoomType
+from app.models.partner_model import HotelPartner
 from app.models.reservation import Reservation
+from app.models.room_type import RoomType
 from app.models.user import User
 from app.schemas.partner_schema import BookingInfo
-from app.models.partner_model import HotelPartner
-from app.models.hotel import Hotel
 
 
 def check_booking_by_hotel_id(

@@ -3,12 +3,12 @@ from sqlalchemy.orm import Session
 
 from app.config.database import get_db
 from app.schemas.user_schema import (
-    RegisterUserRequest,
-    RegisterUserResponse,
-    LoginUserRequest,
-    LoginUserResponse,
     ChangePasswordRequest,
     DeleteUserRequest,
+    LoginUserRequest,
+    LoginUserResponse,
+    RegisterUserRequest,
+    RegisterUserResponse,
 )
 from app.services import user_service
 from app.utilities.auth import get_current_user_id
@@ -62,3 +62,8 @@ def get_current_user(
         "message": "Protected route accessed successfully",
         "user_id": user_id,
     }
+
+
+@router.get("/get-reward-points")
+def get_reward_points(user_id: int = Depends(get_current_user_id)):
+    return user_service.get_reward_points(user_id)

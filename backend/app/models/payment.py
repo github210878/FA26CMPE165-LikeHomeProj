@@ -1,8 +1,9 @@
-from tokenize import String
-from sqlalchemy import Float, String, Integer, DateTime, Enum
-from sqlalchemy.orm import Mapped, mapped_column
-from app.config.database import Base
 from datetime import datetime
+
+from sqlalchemy import DateTime, Enum, Float, Integer
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.config.database import Base
 
 
 class Payment(Base):

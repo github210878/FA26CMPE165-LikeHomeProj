@@ -1,6 +1,8 @@
 from tokenize import String
-from sqlalchemy import String, Integer, DateTime, Enum
+
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.config.database import Base
 
 

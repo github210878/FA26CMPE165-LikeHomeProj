@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.routing import APIRoute
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+
 from app.config.database import get_db
 from app.schemas.partner_schema import (
     PartnerLoginRequest,

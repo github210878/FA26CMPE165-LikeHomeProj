@@ -1,34 +1,33 @@
-import math
 import logging
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import math
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from app.config.database import get_db
-from app.models.cache_hotel import CacheHotel
+from sqlalchemy.orm import Session
+
+from app.config.constants import Constants
 from app.repositories import hotel_dao
-from app.utilities import serpapi_client
-from app.utilities.serpapi_client import (
-    SerpApiConfigError,
-    SerpApiTimeoutError,
-    SerpApiRequestError,
-    SerpApiResponseError,
-)
 from app.schemas.hotel_schema import (
+    HotelCancellationPolicy,
+    HotelDetailsRequest,
+    HotelDetailsResponse,
+    HotelRate,
+    HotelRevalidationRequest,
+    HotelRevalidationResponse,
     HotelSearchRequest,
     HotelSearchResponse,
     HotelSearchResult,
-    HotelRate,
-    HotelDetailsRequest,
-    HotelDetailsResponse,
-    HotelCancellationPolicy,
-    HotelRevalidationRequest,
-    HotelRevalidationResponse,
 )
-from app.config.constants import Constants
+from app.utilities import serpapi_client
+from app.utilities.serpapi_client import (
+    SerpApiConfigError,
+    SerpApiRequestError,
+    SerpApiResponseError,
+    SerpApiTimeoutError,
+)
 
 logger = logging.getLogger(__name__)
 CENT = Decimal("0.01")
@@ -41,7 +40,9 @@ def _provider_money(value: object) -> Decimal | None:
         amount = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
-    return amount if amount.is_finite() and 0 < amount <= Decimal("99999999.99") else None
+    return (
+        amount if amount.is_finite() and 0 < amount <= Decimal("99999999.99") else None
+    )
 
 
 def _extracted(rate: object, field: str) -> Decimal | None:
@@ -87,7 +88,9 @@ def _property_from_details(response: object, property_token: str) -> dict | None
 def _text_list(value: object) -> list[str] | None:
     if not isinstance(value, list):
         return None
-    values = list(dict.fromkeys(text for item in value if (text := _optional_text(item))))
+    values = list(
+        dict.fromkeys(text for item in value if (text := _optional_text(item)))
+    )
     return values or None
 
 
@@ -149,7 +152,11 @@ def _detail_rate(value: object) -> HotelRate | None:
     for key in ("extracted_lowest", "extracted_before_taxes_fees"):
         amount = _finite_number(value.get(key))
         fields[key] = amount if amount is not None and amount >= 0 else None
-    return HotelRate(**fields) if any(item is not None for item in fields.values()) else None
+    return (
+        HotelRate(**fields)
+        if any(item is not None for item in fields.values())
+        else None
+    )
 
 
 def _cancellation_policies(value: object) -> list[HotelCancellationPolicy] | None:
@@ -163,14 +170,24 @@ def _cancellation_policies(value: object) -> list[HotelCancellationPolicy] | Non
         free = offer.get("free_cancellation")
         if not source or not isinstance(free, bool):
             continue
-        policies.append(HotelCancellationPolicy(
-            source=source,
-            free_cancellation=free,
-            free_cancellation_until_date=_optional_text(offer.get("free_cancellation_until_date")) if free else None,
-            free_cancellation_until_time=_optional_text(offer.get("free_cancellation_until_time")) if free else None,
-            rate_per_night=_detail_rate(offer.get("rate_per_night")),
-            total_rate=_detail_rate(offer.get("total_rate")),
-        ))
+        policies.append(
+            HotelCancellationPolicy(
+                source=source,
+                free_cancellation=free,
+                free_cancellation_until_date=(
+                    _optional_text(offer.get("free_cancellation_until_date"))
+                    if free
+                    else None
+                ),
+                free_cancellation_until_time=(
+                    _optional_text(offer.get("free_cancellation_until_time"))
+                    if free
+                    else None
+                ),
+                rate_per_night=_detail_rate(offer.get("rate_per_night")),
+                total_rate=_detail_rate(offer.get("total_rate")),
+            )
+        )
     return policies or None
 
 
@@ -178,11 +195,17 @@ def get_hotel_details(info: HotelDetailsRequest) -> HotelDetailsResponse:
     try:
         raw_response = serpapi_client.search_google_hotels(_detail_params(info))
     except SerpApiConfigError as exc:
-        raise HTTPException(status_code=500, detail="Hotel detail service is not configured") from exc
+        raise HTTPException(
+            status_code=500, detail="Hotel detail service is not configured"
+        ) from exc
     except SerpApiTimeoutError as exc:
-        raise HTTPException(status_code=504, detail="Hotel detail service timed out") from exc
+        raise HTTPException(
+            status_code=504, detail="Hotel detail service timed out"
+        ) from exc
     except (SerpApiRequestError, SerpApiResponseError) as exc:
-        raise HTTPException(status_code=502, detail="Hotel detail service is temporarily unavailable") from exc
+        raise HTTPException(
+            status_code=502, detail="Hotel detail service is temporarily unavailable"
+        ) from exc
 
     property_data = _property_from_details(raw_response, info.property_token)
     if property_data is None:
@@ -190,7 +213,9 @@ def get_hotel_details(info: HotelDetailsRequest) -> HotelDetailsResponse:
 
     name = _optional_text(property_data.get("name"))
     if not name or len(name) > 255:
-        raise HTTPException(status_code=502, detail="Hotel detail service returned an invalid property")
+        raise HTTPException(
+            status_code=502, detail="Hotel detail service returned an invalid property"
+        )
 
     rating = _finite_number(property_data.get("overall_rating"))
     if rating is not None and not 0 <= rating <= 5:
@@ -210,7 +235,11 @@ def get_hotel_details(info: HotelDetailsRequest) -> HotelDetailsResponse:
         images=images,
         thumbnail=_detail_thumbnail(property_data, images),
         link=_optional_text(property_data.get("link")),
-        gps_coordinates=property_data.get("gps_coordinates") if isinstance(property_data.get("gps_coordinates"), dict) else None,
+        gps_coordinates=(
+            property_data.get("gps_coordinates")
+            if isinstance(property_data.get("gps_coordinates"), dict)
+            else None
+        ),
         description=_optional_text(property_data.get("description")),
         address=_optional_text(property_data.get("address")),
         phone=_optional_text(property_data.get("phone")),
@@ -242,21 +271,37 @@ def revalidate_hotel(info: HotelRevalidationRequest) -> HotelRevalidationRespons
     try:
         details = serpapi_client.search_google_hotels(params)
     except SerpApiConfigError as exc:
-        raise HTTPException(status_code=500, detail="Hotel rate service is not configured") from exc
+        raise HTTPException(
+            status_code=500, detail="Hotel rate service is not configured"
+        ) from exc
     except SerpApiTimeoutError as exc:
-        raise HTTPException(status_code=504, detail="Hotel rate service timed out") from exc
+        raise HTTPException(
+            status_code=504, detail="Hotel rate service timed out"
+        ) from exc
     except (SerpApiRequestError, SerpApiResponseError) as exc:
-        raise HTTPException(status_code=502, detail="Hotel rate service is temporarily unavailable") from exc
+        raise HTTPException(
+            status_code=502, detail="Hotel rate service is temporarily unavailable"
+        ) from exc
 
     if not isinstance(details, dict):
-        raise HTTPException(status_code=502, detail="Hotel rate service returned an invalid response")
+        raise HTTPException(
+            status_code=502, detail="Hotel rate service returned an invalid response"
+        )
     hotel_name = _optional_text(details.get("name"))
-    if details.get("property_token") != info.property_token or not hotel_name or len(hotel_name) > 255:
-        raise HTTPException(status_code=409, detail="Property could not be verified; search again")
+    if (
+        details.get("property_token") != info.property_token
+        or not hotel_name
+        or len(hotel_name) > 255
+    ):
+        raise HTTPException(
+            status_code=409, detail="Property could not be verified; search again"
+        )
 
     offers = details.get("prices")
     if not isinstance(offers, list):
-        raise HTTPException(status_code=409, detail="No usable rate for this stay; search again")
+        raise HTTPException(
+            status_code=409, detail="No usable rate for this stay; search again"
+        )
 
     nights = (info.check_out_date - info.check_in_date).days
     party_size = info.adults + info.children
@@ -270,8 +315,12 @@ def revalidate_hotel(info: HotelRevalidationRequest) -> HotelRevalidationRespons
         total = _extracted(offer.get("total_rate"), "extracted_before_taxes_fees")
         total_with_fees = _extracted(offer.get("total_rate"), "extracted_lowest")
         if (
-            not source or isinstance(capacity, bool) or not isinstance(capacity, int)
-            or capacity < party_size or nightly is None or total is None
+            not source
+            or isinstance(capacity, bool)
+            or not isinstance(capacity, int)
+            or capacity < party_size
+            or nightly is None
+            or total is None
         ):
             continue
         # Google rounds nightly display values. Large disagreement means the
@@ -283,18 +332,25 @@ def revalidate_hotel(info: HotelRevalidationRequest) -> HotelRevalidationRespons
         candidates.append((total, source, capacity, total_with_fees))
 
     if not candidates:
-        raise HTTPException(status_code=409, detail="No usable rate for this stay; search again")
+        raise HTTPException(
+            status_code=409, detail="No usable rate for this stay; search again"
+        )
 
-    base_total, source, capacity, provider_total = min(candidates, key=lambda row: (row[0], row[1]))
+    base_total, source, capacity, provider_total = min(
+        candidates, key=lambda row: (row[0], row[1])
+    )
     base_total = _cents(base_total)
     nightly_average = _cents(base_total / nights)
     reservation_total = _cents(base_total * Decimal(str(Constants.SERVICE_FEE)))
     payment_amount = _cents(reservation_total * Decimal(str(Constants.SALE_TAX)))
     if max(nightly_average, reservation_total, payment_amount) > Decimal("99999999.99"):
-        raise HTTPException(status_code=409, detail="No usable rate for this stay; search again")
+        raise HTTPException(
+            status_code=409, detail="No usable rate for this stay; search again"
+        )
     displayed = info.displayed_price_per_night
     changed = (
-        None if displayed is None or provider_total is None
+        None
+        if displayed is None or provider_total is None
         else _cents(Decimal(str(displayed))) != _cents(provider_total / nights)
     )
     return HotelRevalidationResponse(
@@ -312,7 +368,9 @@ def revalidate_hotel(info: HotelRevalidationRequest) -> HotelRevalidationRespons
         guest_capacity=capacity,
         current_price_per_night=float(nightly_average),
         provider_base_total=float(_cents(base_total)),
-        provider_total_with_taxes_fees=float(_cents(provider_total)) if provider_total is not None else None,
+        provider_total_with_taxes_fees=(
+            float(_cents(provider_total)) if provider_total is not None else None
+        ),
         likehome_reservation_total=float(reservation_total),
         likehome_payment_amount=float(payment_amount),
         price_changed=changed,
@@ -353,7 +411,11 @@ def _next_page_token(response: object) -> str | None:
     if direct:
         return direct
     pagination = response.get("serpapi_pagination")
-    return _optional_text(pagination.get("next_page_token")) if isinstance(pagination, dict) else None
+    return (
+        _optional_text(pagination.get("next_page_token"))
+        if isinstance(pagination, dict)
+        else None
+    )
 
 
 def _finite_number(value: object) -> float | None:
@@ -428,6 +490,7 @@ def _to_hotel_result(raw_property: dict) -> HotelSearchResult:
         gps_coordinates=coordinates if isinstance(coordinates, dict) else None,
     )
 
+
 def _sort_hotels(
     properties: list[HotelSearchResult],
     sort_by: str,
@@ -442,8 +505,7 @@ def _sort_hotels(
             properties,
             key=lambda hotel: (
                 hotel.price_per_night is None,
-                hotel.price_per_night
-                if hotel.price_per_night is not None else 0,
+                hotel.price_per_night if hotel.price_per_night is not None else 0,
             ),
         )
 
@@ -452,8 +514,7 @@ def _sort_hotels(
             properties,
             key=lambda hotel: (
                 hotel.price_per_night is None,
-                -hotel.price_per_night
-                if hotel.price_per_night is not None else 0,
+                -hotel.price_per_night if hotel.price_per_night is not None else 0,
             ),
         )
 
@@ -467,6 +528,7 @@ def _sort_hotels(
         )
 
     return properties
+
 
 def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchResponse:
     params = _build_serpapi_params(search_info)
@@ -501,7 +563,6 @@ def search_hotels(search_info: HotelSearchRequest, db: Session) -> HotelSearchRe
 
     # Sort hotel results based on the selected option
     properties = _sort_hotels(properties, search_info.sort_by)
-
 
     # Cache the hotel data in the database
     try:

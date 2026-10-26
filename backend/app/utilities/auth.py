@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import jwt
@@ -12,8 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config.config import Config
 from app.config.database import get_db
-from app.repositories import user_dao
-from app.repositories import partner_dao
+from app.repositories import partner_dao, user_dao
 
 load_dotenv()
 
@@ -55,7 +54,7 @@ def create_access_token(
     if subject_type not in SUBJECT_TYPES:
         raise ValueError("Invalid subject type")
 
-    issued_at = datetime.now(timezone.utc)
+    issued_at = datetime.now(UTC)
     expiration = issued_at + timedelta(minutes=JWT_EXPIRE_MINUTES)
 
     payload = {
