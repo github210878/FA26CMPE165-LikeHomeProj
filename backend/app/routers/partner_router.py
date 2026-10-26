@@ -1,6 +1,6 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
@@ -22,10 +22,13 @@ class _PartnerRoute(APIRoute):
             try:
                 return await handler(request)
             except RequestValidationError as exc:
-                raise HTTPException(status_code=422, detail=[
-                    {key: error[key] for key in ("loc", "msg", "type")}
-                    for error in exc.errors()
-                ]) from exc
+                raise HTTPException(
+                    status_code=422,
+                    detail=[
+                        {key: error[key] for key in ("loc", "msg", "type")}
+                        for error in exc.errors()
+                    ],
+                ) from exc
 
         return safe_validation
 
