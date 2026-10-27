@@ -10,6 +10,8 @@ import { canCancelBooking, cancellationErrorMessage, createCancellationSubmissio
 import { cancelBookingAndRefresh, getBookingDetails, getMyBookings, getMyPayments } from "@/lib/bookings";
 import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
 import { BookingDetailsSkeleton, BookingListSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
+import ReservationChangeFlow from "@/components/ReservationChangeFlow";
+
 
 type LoadState =
   | { kind: "loading" }
@@ -86,6 +88,7 @@ export default function MyBookingsExperience() {
   const [load, setLoad] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [expandedReservationId, setExpandedReservationId] = useState<number | null>(null);
+  const [changingReservationId, setChangingReservationId] = useState<number | null>(null);
   const [cancellationPhase, setCancellationPhase] = useState<CancellationPhase>({ kind: "idle" });
   const [cancellationNotice, setCancellationNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
   const [blockedReservationIds, setBlockedReservationIds] = useState<Set<number>>(() => new Set());
@@ -247,6 +250,39 @@ export default function MyBookingsExperience() {
             {expandedReservationId === booking.reservation_id ? "Hide details" : "View details"}
           </button>
           {expandedReservationId === booking.reservation_id && <BookingDetailPanel reservationId={booking.reservation_id} />}
+
+          {booking.status === "confirmed" && (
+              <div className="mt-4">
+                <button
+                    type="button"
+                    aria-expanded={changingReservationId === booking.reservation_id}
+                    onClick={() =>
+                        setChangingReservationId((current) =>
+                            current === booking.reservation_id
+                                ? null
+                                : booking.reservation_id
+                        )
+                    }
+                    className="min-h-11 font-medium text-teal-700 underline"
+                >
+                  {changingReservationId === booking.reservation_id
+                      ? "Hide Change Booking"
+                      : "Change Booking"}
+                </button>
+
+                {changingReservationId === booking.reservation_id && (
+                    <div className="mt-4 rounded-lg border border-slate-200 p-4">
+                      <ReservationChangeFlow
+                          key={booking.reservation_id}
+                          reservationId={booking.reservation_id}
+                          checkInDate={booking.check_in_date}
+                          checkOutDate={booking.check_out_date}
+                          enableConfirmation={false}
+                      />
+                    </div>
+                )}
+              </div>
+          )}
           {canCancelBooking(booking.status) && !blockedReservationIds.has(booking.reservation_id) && (
             cancellationPhase.kind !== "idle" && cancellationPhase.reservationId === booking.reservation_id ? (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
