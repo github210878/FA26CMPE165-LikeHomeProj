@@ -1,4 +1,4 @@
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Protocol
 
 from fastapi import HTTPException
@@ -16,8 +16,7 @@ MAX_MONEY = Decimal("99999999.99")
 class PaymentProvider(Protocol):
     """Boundary for a future external payment provider."""
 
-    def authorize(self, payment: Payment) -> None:
-        ...
+    def authorize(self, payment: Payment) -> None: ...
 
 
 class LocalPaymentProvider:
@@ -78,7 +77,9 @@ class PaymentService:
     @staticmethod
     def reward_points_for(amount: float | Decimal) -> int:
         try:
-            if isinstance(amount, bool) or not isinstance(amount, (int, float, Decimal)):
+            if isinstance(amount, bool) or not isinstance(
+                amount, (int, float, Decimal)
+            ):
                 raise ValueError("Payment amount is not numeric")
             value = Decimal(str(amount))
             if (

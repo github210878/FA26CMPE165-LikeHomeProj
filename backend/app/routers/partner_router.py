@@ -58,3 +58,5 @@ def check_booking(
     partner_id: int = Depends(get_current_partner_id),
 ):
     return partner_service.check_booking(db, partner_id=partner_id)
+
+

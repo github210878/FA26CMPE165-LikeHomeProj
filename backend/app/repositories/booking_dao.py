@@ -1,6 +1,6 @@
 from datetime import date
-from fastapi import HTTPException
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -331,6 +331,4 @@ def add_reward_points_to_user(db: Session, user: User, points: int):
     if user is None or user.status != "active":
         raise HTTPException(
             status_code=500, detail="Failed to add reward points"
-        ) from exc
-    return None
-
+        ) from exec
