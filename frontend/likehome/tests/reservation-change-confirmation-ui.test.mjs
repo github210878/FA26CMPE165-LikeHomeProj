@@ -197,6 +197,24 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
       SessionLoadingSkeleton: skeleton("Checking your session…"),
     },
   };
+
+  const Flow = loadComponent(
+      "../components/ReservationChangeFlow.tsx",
+      {
+        ...imports,
+        "@/components/ReservationChangeForm": {
+          default: () => null,
+        },
+        "@/components/ReservationChangeConfirmation": {
+          default: () => null,
+        },
+      },
+      clock
+  );
+
+  imports["@/components/ReservationChangeFlow"] = {
+    default: Flow,
+  };
   const Confirmation = loadComponent("../components/ReservationChangeConfirmation.tsx", imports, clock);
   // Only this synthetic boundary mounts confirmation. The actual current
   // booking page is tested separately and must never acquire a form import.
@@ -313,7 +331,7 @@ test("module import alone starts no hook, timer, network request, storage write,
   assert.equal(typeof component, "function"); assert.equal(events.size, 0);
 });
 
-test("confirmation remains absent from all existing application modules and imports only its confirmation adapter", () => {
+test("only ReservationChangeFlow directly imports confirmation and confirmation uses its adapter", () => {
   const references = [];
   function inspect(directory) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -324,7 +342,10 @@ test("confirmation remains absent from all existing application modules and impo
     }
   }
   for (const directory of ["app", "components", "lib", "constants"]) inspect(new URL(`../${directory}/`, import.meta.url));
-  assert.deepEqual(references, []);
+  assert.deepEqual(
+      references.map((path) => path.split("/").pop()),
+      ["ReservationChangeFlow.tsx"]
+  );
   const source = readFileSync(new URL("../components/ReservationChangeConfirmation.tsx", import.meta.url), "utf8");
   const parsed = ts.createSourceFile("ReservationChangeConfirmation.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const adapters = parsed.statements.filter((node) => ts.isImportDeclaration(node) && node.moduleSpecifier.text === "@/lib/bookings")
