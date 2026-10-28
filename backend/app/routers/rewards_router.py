@@ -3,7 +3,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
-from app.schemas.rewards_schema import RewardsBalanceResponse
+from app.schemas.rewards_schema import (
+    RewardsBalanceResponse,
+    RewardsHistoryResponse,
+)
 from app.services import rewards_service
 from app.utilities.auth import get_current_user_id
 
@@ -18,3 +21,11 @@ def get_rewards_balance(
 ):
     """Return the authenticated user's reward points balance."""
     return rewards_service.get_rewards_balance(db, user_id)
+
+@router.get("/history", response_model=RewardsHistoryResponse)
+def get_rewards_history(
+        db: Session = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    """Return reward transactions for the authenticated user."""
+    return rewards_service.get_rewards_history(db, user_id)

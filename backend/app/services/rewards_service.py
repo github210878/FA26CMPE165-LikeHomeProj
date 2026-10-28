@@ -4,6 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.repositories import user_dao
 from app.schemas.rewards_schema import RewardsBalanceResponse
+from app.schemas.rewards_schema import (
+    RewardsBalanceResponse,
+    RewardsHistoryResponse,
+)
 
 
 def get_rewards_balance(
@@ -21,4 +25,16 @@ def get_rewards_balance(
 
     return RewardsBalanceResponse(
         reward_points=user.reward_points
+    )
+
+def get_rewards_history(
+        db: Session, user_id: int
+) -> RewardsHistoryResponse:
+    """Retrieve reward transactions for the authenticated user.
+
+    Database integration is pending the rewards ledger model.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Rewards history is not yet available",
     )
