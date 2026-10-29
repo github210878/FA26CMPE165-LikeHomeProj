@@ -244,6 +244,15 @@ amount, type, and status so a pending payment can be resumed after refresh.
 The reservation's `confirmed` status means a local reservation exists; the
 separate payment status determines whether the LikeHome payment step completed.
 
+The authenticated `GET /bookings/{reservation_id}/cancellation-charge` route
+previews the LikeHome cancellation charge for an owned, confirmed reservation.
+It returns the reservation total, configured fee rate, calculated charge, and
+currency without changing the reservation, creating a payment, or changing
+rewards. Missing or non-owned reservations return `404`; cancelled or completed
+reservations return `409`. The preview is advisory: `POST
+/bookings/cancel-booking/{reservation_id}` recalculates the fee inside its
+atomic cancellation transaction rather than trusting a stale preview.
+
 ### User sign up:
 
 - API: `/user/register`

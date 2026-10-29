@@ -106,6 +106,15 @@ class CancellationResponse(BaseModel):
     cancellation_payment_status: Literal["pending"]
 
 
+class CancellationChargeResponse(BaseModel):
+    reservation_id: int
+    reservation_total: float
+    cancellation_fee_rate: float
+    cancellation_charge: float
+    currency: Literal["USD"] = "USD"
+    reservation_status: Literal["confirmed"]
+
+
 class BookingListItem(BaseModel):
     reservation_id: int = Field(gt=0)
     hotel_name: str
