@@ -12,6 +12,7 @@ from app.repositories import booking_dao, user_dao
 from app.schemas.booking_schema import (
     BookingRequest,
     BookingResponse,
+    CancellationChargeResponse,
     CancellationResponse,
     PaymentResponse,
 )
@@ -171,6 +172,28 @@ def get_booking_by_id(db: Session, booking_id: int, user_id: int):
 
 def get_payment_by_id(db: Session, payment_id: int, user_id: int):
     return booking_dao.get_payment_by_id(db, payment_id, user_id)
+
+
+def get_cancellation_charge(
+    db: Session, reservation_id: int, user_id: int
+) -> CancellationChargeResponse:
+    """Preview an owned reservation's cancellation charge without side effects."""
+    reservation = booking_dao.get_owned_reservation(db, reservation_id, user_id)
+    if reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    if reservation.status != "confirmed":
+        raise HTTPException(
+            status_code=409, detail="Reservation cannot be cancelled"
+        )
+
+    fee = calculate_cancellation_fee(reservation.total_price)
+    return CancellationChargeResponse(
+        reservation_id=reservation.reservation_id,
+        reservation_total=float(_money(Decimal(str(reservation.total_price)))),
+        cancellation_fee_rate=float(Constants.CANCELLATION_FEE),
+        cancellation_charge=float(fee),
+        reservation_status=reservation.status,
+    )
 
 
 def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentResponse:

@@ -6,6 +6,7 @@ from app.schemas.booking_schema import (
     BookingListItem,
     BookingRequest,
     BookingResponse,
+    CancellationChargeResponse,
     CancellationResponse,
     PaymentResponse,
 )
@@ -151,6 +152,19 @@ def cancel_booking(
     Cancel a booking for the current user.
     """
     return booking_service.cancel_booking(db, reservation_id, user_id)
+
+
+@router.get(
+    "/{reservation_id}/cancellation-charge",
+    response_model=CancellationChargeResponse,
+)
+def get_cancellation_charge(
+    reservation_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Preview an owned reservation's cancellation charge without changing it."""
+    return booking_service.get_cancellation_charge(db, reservation_id, user_id)
 
 
 @router.post("/pay-cancellation-fee/{payment_id}", response_model=PaymentResponse)
