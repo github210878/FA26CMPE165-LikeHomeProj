@@ -197,6 +197,9 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
     },
   };
 
+  imports["@/components/CancelBookingDialog"] = {
+    default: loadComponent("../components/CancelBookingDialog.tsx", imports, clock),
+  };
   const Flow = loadComponent(
       "../components/ReservationChangeFlow.tsx",
       {
