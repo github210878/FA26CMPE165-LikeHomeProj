@@ -11,6 +11,7 @@ import { cancelBookingAndRefresh, getBookingDetails, getMyBookings, getMyPayment
 import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
 import { BookingDetailsSkeleton, BookingListSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 import ReservationChangeFlow from "@/components/ReservationChangeFlow";
+import CancelBookingDialog from "@/components/CancelBookingDialog";
 
 
 type LoadState =
@@ -363,29 +364,18 @@ export default function MyBookingsExperience() {
         </div>
     )}
           {canCancelBooking(booking.status) && !blockedReservationIds.has(booking.reservation_id) && (
-            cancellationPhase.kind !== "idle" && cancellationPhase.reservationId === booking.reservation_id ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm text-slate-800">Are you sure you want to cancel this booking?</p>
-                <div className="mt-3 flex flex-wrap gap-3">
-                  <button type="button" disabled={cancellationPhase.kind === "submitting"}
-                    onClick={() => void confirmCancellation(booking.reservation_id)}
-                    className="min-h-11 rounded-md bg-red-700 px-4 font-medium text-white hover:bg-red-800 disabled:cursor-wait disabled:opacity-60">
-                    {cancellationPhase.kind === "submitting" ? "Cancelling…" : "Confirm cancellation"}
-                  </button>
-                  <button type="button" disabled={cancellationPhase.kind === "submitting"}
-                    onClick={() => setCancellationPhase((phase) => keepBooking(phase))}
-                    className="min-h-11 font-medium text-teal-700 underline disabled:opacity-60">
-                    Keep booking
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button type="button" disabled={cancellationPhase.kind === "submitting"}
+            <>
+              <button type="button" disabled={cancellationPhase.kind === "submitting"} aria-haspopup="dialog"
                 onClick={() => { setCancellationNotice(null); setCancellationPhase((phase) => requestCancellation(phase, booking.reservation_id, booking.status)); }}
                 className="ml-5 mt-4 min-h-11 font-medium text-red-700 underline disabled:opacity-60">
                 Cancel booking
               </button>
-            )
+              {cancellationPhase.kind !== "idle" && cancellationPhase.reservationId === booking.reservation_id && (
+                <CancelBookingDialog booking={booking} submitting={cancellationPhase.kind === "submitting"}
+                  onKeep={() => setCancellationPhase((phase) => keepBooking(phase))}
+                  onConfirm={() => void confirmCancellation(booking.reservation_id)} />
+              )}
+            </>
           )}
         </li>
       ))}
