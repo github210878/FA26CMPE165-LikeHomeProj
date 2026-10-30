@@ -148,7 +148,14 @@ def test_json_requests_keep_credentials_out_of_urls_and_access_logs(ownership_ap
     for response in (registered, authenticated):
         assert response.request.url.query == b""
         assert_no_sensitive_values(str(response.request.url), payload["user_name"], payload["password"], token)
-    assert len([record for record in caplog.records if record.name == "httpx"]) == 2
+    access_logs = [record for record in caplog.records if record.name == "httpx"]
+    assert_no_sensitive_values(
+        "\n".join(record.getMessage() for record in access_logs),
+        payload["user_name"],
+        payload["password"],
+        password_hash,
+        token,
+    )
     assert_no_sensitive_values(caplog.text, payload["user_name"], payload["password"], password_hash, token)
 
 

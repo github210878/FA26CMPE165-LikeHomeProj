@@ -3,20 +3,23 @@ from sqlalchemy.orm import Session
 
 from app.config.database import get_db
 from app.schemas.booking_schema import (
+    BookingListItem,
     BookingRequest,
     BookingResponse,
-    BookingListItem,
+    CancellationChargeResponse,
     CancellationResponse,
     PaymentResponse,
 )
-from app.services import booking_service
+from app.schemas.reservation_change_payment_schema import ReservationFinancialSummary
 from app.schemas.reservation_change_schema import (
     ReservationChangeQuoteResponse,
     ReservationChangeReviewRequest,
 )
-from app.services import reservation_change_quote_service
-from app.schemas.reservation_change_payment_schema import ReservationFinancialSummary
-from app.services import reservation_financial_summary_service
+from app.services import (
+    booking_service,
+    reservation_change_quote_service,
+    reservation_financial_summary_service,
+)
 from app.utilities.auth import get_current_user_id
 
 router = APIRouter(
@@ -27,10 +30,15 @@ router = APIRouter(
 
 async def _financial_summary_read_request(request: Request) -> None:
     if request.query_params or await request.body():
-        raise HTTPException(status_code=422, detail="Financial summary accepts no query parameters or body")
+        raise HTTPException(
+            status_code=422,
+            detail="Financial summary accepts no query parameters or body",
+        )
 
 
-@router.get("/{reservation_id}/financial-summary", response_model=ReservationFinancialSummary)
+@router.get(
+    "/{reservation_id}/financial-summary", response_model=ReservationFinancialSummary
+)
 def get_reservation_financial_summary(
     reservation_id: int,
     db: Session = Depends(get_db),
@@ -38,10 +46,14 @@ def get_reservation_financial_summary(
     _request: None = Depends(_financial_summary_read_request),
 ):
     """Read this customer's pre-change financial state; revision 0 is a convention."""
-    return reservation_financial_summary_service.get_financial_summary(db, reservation_id, user_id)
+    return reservation_financial_summary_service.get_financial_summary(
+        db, reservation_id, user_id
+    )
 
 
-@router.post("/{reservation_id}/change-quote", response_model=ReservationChangeQuoteResponse)
+@router.post(
+    "/{reservation_id}/change-quote", response_model=ReservationChangeQuoteResponse
+)
 def quote_reservation_change(
     reservation_id: int,
     review: ReservationChangeReviewRequest,
@@ -49,7 +61,9 @@ def quote_reservation_change(
     user_id: int = Depends(get_current_user_id),
 ):
     """Review a same-property date change; this does not change or hold a booking."""
-    return reservation_change_quote_service.create_change_quote(db, reservation_id, review, user_id)
+    return reservation_change_quote_service.create_change_quote(
+        db, reservation_id, review, user_id
+    )
 
 
 @router.post("/create", response_model=BookingResponse)
@@ -140,11 +154,37 @@ def cancel_booking(
     return booking_service.cancel_booking(db, reservation_id, user_id)
 
 
+@router.get(
+    "/{reservation_id}/cancellation-charge",
+    response_model=CancellationChargeResponse,
+)
+def get_cancellation_charge(
+    reservation_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Preview an owned reservation's cancellation charge without changing it."""
+    return booking_service.get_cancellation_charge(db, reservation_id, user_id)
+
+
 @router.post("/pay-cancellation-fee/{payment_id}", response_model=PaymentResponse)
 def pay_cancellation_fee(
-    payment_id: int, db: Session = Depends(get_db), user_id=Depends(get_current_user_id)
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
 ):
     """Pay cancellation payment"""
     return booking_service.pay_cancellation_fee(
         db, payment_id=payment_id, user_id=user_id
+    )
+
+
+@router.get("/pay-with-reward-points/{payment_id}")
+def pay_with_reward_points(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return booking_service.pay_with_reward_points(
+        db=db, user_id=user_id, payment_id=payment_id
     )

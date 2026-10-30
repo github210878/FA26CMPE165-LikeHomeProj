@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, Integer
+from sqlalchemy import DateTime, Enum, Integer, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config.database import Base
@@ -15,7 +15,11 @@ class Payment(Base):
 
     reservation_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    # Keep the existing float API contract while enforcing fixed precision in
+    # the database column.
+    amount: Mapped[float] = mapped_column(
+        Numeric(10, 2, asdecimal=False), nullable=False
+    )
 
     payment_type: Mapped[str] = mapped_column(
         Enum("booking", "cancellation"), nullable=False
