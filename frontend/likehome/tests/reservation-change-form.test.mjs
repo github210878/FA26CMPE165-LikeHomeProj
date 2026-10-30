@@ -196,6 +196,24 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
       SessionLoadingSkeleton: skeleton("Checking your session…"),
     },
   };
+
+  const Flow = loadComponent(
+      "../components/ReservationChangeFlow.tsx",
+      {
+        ...imports,
+        "@/components/ReservationChangeForm": {
+          default: () => null,
+        },
+        "@/components/ReservationChangeConfirmation": {
+          default: () => null,
+        },
+      },
+      clock
+  );
+
+  imports["@/components/ReservationChangeFlow"] = {
+    default: Flow,
+  };
   const Form = loadComponent("../components/ReservationChangeForm.tsx", imports, clock);
   // Only this synthetic boundary mounts the dormant form. The actual current
   // booking page is tested separately and must never acquire a form import.
@@ -299,7 +317,8 @@ test("module import alone runs no hook, quote request, timer, storage write, or 
   assert.equal(events.size, 0);
 });
 
-test("application source has no import or mount of the dormant form and the form imports only the quote adapter", () => {
+
+test("only ReservationChangeFlow directly imports the reservation change form and the form uses the quote adapter", () => {
   const references = [];
   function inspect(directory) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -310,7 +329,10 @@ test("application source has no import or mount of the dormant form and the form
     }
   }
   for (const directory of ["app", "components", "lib", "constants"]) inspect(new URL(`../${directory}/`, import.meta.url));
-  assert.deepEqual(references, []);
+  assert.deepEqual(
+      references.map((path) => path.split("/").pop()),
+      ["ReservationChangeFlow.tsx"]
+  );
   const source = readFileSync(new URL("../components/ReservationChangeForm.tsx", import.meta.url), "utf8");
   const parsed = ts.createSourceFile("ReservationChangeForm.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const adapters = parsed.statements.filter((node) => ts.isImportDeclaration(node) && node.moduleSpecifier.text === "@/lib/bookings")

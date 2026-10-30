@@ -278,6 +278,18 @@ export default function MyBookingsExperience() {
                           checkInDate={booking.check_in_date}
                           checkOutDate={booking.check_out_date}
                           enableConfirmation={false}
+                          onRefreshCurrent={async () => {
+                            const [bookings, payments] = await Promise.all([
+                              getMyBookings(),
+                              getMyPayments(),
+                            ]);
+
+                            setLoad(
+                                bookings.length === 0
+                                    ? { kind: "empty" }
+                                    : { kind: "success", bookings, payments }
+                            );
+                          }}
                       />
                     </div>
                 )}
