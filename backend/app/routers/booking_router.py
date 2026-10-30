@@ -14,6 +14,8 @@ from app.schemas.reservation_change_payment_schema import ReservationFinancialSu
 from app.schemas.reservation_change_schema import (
     ReservationChangeQuoteResponse,
     ReservationChangeReviewRequest,
+    ReservationChangeReceiptRequest,
+    ReservationChangeReceiptResponse,
 )
 from app.services import (
     booking_service,
@@ -63,6 +65,29 @@ def quote_reservation_change(
     """Review a same-property date change; this does not change or hold a booking."""
     return reservation_change_quote_service.create_change_quote(
         db, reservation_id, review, user_id
+    )
+
+@router.post(
+    "/{reservation_id}/change-confirm",
+    response_model=ReservationChangeReceiptResponse,
+    status_code=200,
+)
+def confirm_reservation_change(
+        reservation_id: int,
+        confirmation: ReservationChangeReceiptRequest,
+        db: Session = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    """
+    Reservation-change confirmation integration point.
+
+    Confirmation remains unavailable until the transactional
+    reservation-change service is implemented and verified.
+    No reservation, payment, or reward records are modified.
+    """
+    raise HTTPException(
+        status_code=503,
+        detail="Reservation changes are not available yet.",
     )
 
 
