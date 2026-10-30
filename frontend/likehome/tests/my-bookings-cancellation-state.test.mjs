@@ -139,6 +139,10 @@ function harness(status = "authenticated") {
     "@/lib/bookings": bookings, "@/lib/booking-cancellation": cancellation, "@/lib/payment": payment,
     "@/components/LoadingSkeletons": { BookingDetailsSkeleton: skeleton("Loading booking details…"),
       BookingListSkeleton: skeleton("Loading your bookings…"), SessionLoadingSkeleton: skeleton("Checking your session…") },
+
+    "@/components/ReservationChangeFlow": {
+      default: () => null,
+    },
   };
   const { outputText } = ts.transpileModule(readFileSync(new URL("../components/MyBookingsExperience.tsx", import.meta.url), "utf8"), {
     compilerOptions: { target: ts.ScriptTarget.ES2017, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
