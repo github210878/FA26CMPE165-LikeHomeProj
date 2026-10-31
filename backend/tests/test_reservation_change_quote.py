@@ -176,6 +176,33 @@ def test_owner_receives_provider_quote_and_typed_response_without_writes(quote_a
     assert len(quote_app.sql) == 2  # Authentication and one owner-scoped joined projection.
 
 
+def test_changed_dates_revalidate_property_without_mutating_original_reservation(quote_app):
+    requested = review(check_in_date="2026-11-10", check_out_date="2026-11-12")
+    result = quote_app.post(requested)
+
+    assert result.status_code == 200
+    assert quote_app.calls == [{
+        "q": "Synthetic destination",
+        "property_token": "synthetic-property-A",
+        "check_in_date": "2026-11-10",
+        "check_out_date": "2026-11-12",
+        "adults": 2,
+        "children": 1,
+        "currency": "USD",
+        "gl": "us",
+        "hl": "en",
+    }]
+    assert result.json()["quote"]["check_in_date"] == "2026-11-10"
+    assert result.json()["quote"]["check_out_date"] == "2026-11-12"
+    assert result.json()["quote"]["provider_base_total"] == 240
+
+    with Session(quote_app.engine) as db:
+        reservation = db.get(Reservation, 1)
+        assert reservation.check_in_date == date(2026, 11, 1)
+        assert reservation.check_out_date == date(2026, 11, 3)
+        assert reservation.total_price == 210
+
+
 def test_absence_and_wrong_owner_are_indistinguishable_and_do_not_call_provider(quote_app):
     absent = quote_app.post(reservation_id=999)
     wrong_owner = quote_app.post(request_headers=headers(8))
