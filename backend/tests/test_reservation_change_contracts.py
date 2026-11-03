@@ -571,6 +571,6 @@ def test_serialized_json_passes_unchanged_frontend_validators(contracts, kind):
     assert node is not None, "Existing frontend Node environment is required for compatibility verification"
     result = subprocess.run([node, "-e", FRONTEND_VALIDATORS, str(FRONTEND)], input=json.dumps(body),
                             capture_output=True, text=True, timeout=20, check=False,
-                            env={"PATH": os.environ.get("PATH", "")})
+                            env=os.environ.copy())
     assert result.returncode == 0, result.stderr
     assert result.stdout == "compatible"
