@@ -70,3 +70,11 @@ def get_reward_points(
         user_id: int = Depends(get_current_user_id),
 ):
     return user_service.get_my_reward_points(db, user_id)
+
+@router.get("/rewards/history")
+def get_reward_history(
+        db: Session = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    """Get reward history for the authenticated user."""
+    return user_service.get_my_reward_history(db, user_id)

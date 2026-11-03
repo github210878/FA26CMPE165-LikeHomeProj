@@ -81,3 +81,22 @@ def test_reward_balance_missing_user_returns_404(reward_client):
     response = client.get("/users/get-reward-points")
 
     assert response.status_code == 404
+
+def test_reward_history_returns_503_until_ledger_available(reward_client):
+    client, _ = reward_client
+
+    response = client.get("/users/rewards/history")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Rewards history is not available yet"
+    )
+
+
+def test_reward_history_missing_user_returns_404(reward_client):
+    client, app = reward_client
+    app.dependency_overrides[get_current_user_id] = lambda: 999
+
+    response = client.get("/users/rewards/history")
+
+    assert response.status_code == 404

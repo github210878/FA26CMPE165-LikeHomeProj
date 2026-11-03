@@ -137,3 +137,23 @@ def get_my_reward_points(db: Session, user_id: int):
         "status": True,
         "reward_points": user.reward_points,
     }
+
+def get_my_reward_history(db: Session, user_id: int):
+    """Retrieve reward history for the authenticated user."""
+
+    user = user_dao.get_user_by_id(
+        db=db,
+        user_id=user_id,
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    # Actual history requires the rewards ledger database model.
+    raise HTTPException(
+        status_code=503,
+        detail="Rewards history is not available yet",
+    )
