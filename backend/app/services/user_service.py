@@ -118,12 +118,21 @@ def logout_user(db: Session, user_id: int):
     return {"status": True, "message": "Logged out successfully"}
 
 
-def get_my_reward_points(db: Session, user_id: int = Depends(get_current_user_id)):
-    """Query reward points by the user_id via user_dao"""
 
-    user = user_dao.get_user_by_id(user_id=user_id)
+def get_my_reward_points(db: Session, user_id: int):
+    """Return the authenticated user's current reward balance."""
+
+    user = user_dao.get_user_by_id(
+        db=db,
+        user_id=user_id,
+    )
+
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
     return {
         "status": True,
         "reward_points": user.reward_points,

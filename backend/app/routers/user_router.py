@@ -65,5 +65,8 @@ def get_current_user(
 
 
 @router.get("/get-reward-points")
-def get_reward_points(user_id: int = Depends(get_current_user_id)):
-    return user_service.get_reward_points(user_id)
+def get_reward_points(
+        db: Session = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    return user_service.get_my_reward_points(db, user_id)
