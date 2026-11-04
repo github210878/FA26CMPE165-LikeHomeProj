@@ -332,3 +332,26 @@ def add_reward_points_to_user(db: Session, user: User, points: int):
         raise HTTPException(
             status_code=500, detail="Failed to add reward points"
         ) from exec
+
+
+def check_if_user_booked_by_date_range_excluding(
+    db: Session,
+    user_id: int,
+    check_in_date,
+    check_out_date,
+    excluded_reservation_id: int,
+) -> bool:
+    """Check date overlap while excluding the reservation being modified."""
+    overlapping_reservation = (
+        db.query(Reservation.reservation_id)
+        .filter(
+            Reservation.user_id == user_id,
+            Reservation.reservation_id != excluded_reservation_id,
+            Reservation.status == "confirmed",
+            Reservation.check_in_date < check_out_date,
+            Reservation.check_out_date > check_in_date,
+        )
+        .first()
+    )
+
+    return overlapping_reservation is not None
