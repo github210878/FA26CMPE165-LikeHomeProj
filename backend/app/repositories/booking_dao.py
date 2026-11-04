@@ -260,6 +260,18 @@ def lock_owned_reservation(db: Session, reservation_id: int, user_id: int):
     )
 
 
+def get_owned_reservation(db: Session, reservation_id: int, user_id: int):
+    """Read an owned reservation without locking it for a later write."""
+    return (
+        db.query(Reservation)
+        .filter(
+            Reservation.reservation_id == reservation_id,
+            Reservation.user_id == user_id,
+        )
+        .first()
+    )
+
+
 def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
     """Lock the complete history in ID order; never choose among duplicate charges."""
     payments = (

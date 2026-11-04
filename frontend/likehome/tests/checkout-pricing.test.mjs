@@ -227,3 +227,46 @@ test("HTTP 409 updates the disclosed breakdown from the new quote without automa
   assert.deepEqual(calls, ["/bookings/create", "/hotels/revalidate"]);
   assert.deepEqual(harness.navigation, []);
 });
+
+test("overlapping booking explains the conflict and offers date recovery without resubmitting", async () => {
+  session();
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(new URL(url).pathname);
+    return new Response(JSON.stringify({ detail: "User already has a booking that overlaps with the given date." }), { status: 400 });
+  };
+  const harness = checkoutHarness(quote);
+  harness.render().reserve.props.onClick();
+  await new Promise(setImmediate);
+  const view = harness.render();
+  assert.match(view.html, /These dates overlap another booking/);
+  assert.match(view.html, /This reservation was not created/);
+  assert.match(view.html, /Your existing bookings are unchanged/);
+  assert.ok(view.html.includes(selection.check_in_date));
+  assert.ok(view.html.includes(selection.check_out_date));
+  assert.equal(view.reserve, undefined);
+  assert.doesNotMatch(view.html, /Refresh quote/);
+  const recovery = view.nodes.find((node) => node.props?.children === "Choose different dates");
+  const url = new URL(recovery.props.href, "https://likehome.test");
+  assert.equal(url.pathname, "/search");
+  assert.deepEqual(Object.fromEntries(url.searchParams), { destination: selection.q, guests: String(selection.adults) });
+  assert.ok(view.nodes.some((node) => node.props?.href === "/my-bookings"));
+  assert.equal(view.nodes.find((node) => node.props?.id === "booking-overlap-heading").props.tabIndex, -1);
+  harness.render();
+  assert.deepEqual(calls, ["/bookings/create"]);
+  assert.deepEqual(harness.navigation, []);
+});
+
+test("unrelated booking errors do not claim a date overlap", async () => {
+  session();
+  for (const status of [422, 500]) {
+    globalThis.fetch = async () => new Response("error", { status });
+    const harness = checkoutHarness(quote);
+    harness.render().reserve.props.onClick();
+    await new Promise(setImmediate);
+    const view = harness.render();
+    assert.doesNotMatch(view.html, /These dates overlap/);
+    assert.match(view.html, /No booking success was confirmed/);
+    assert.match(view.html, /Refresh quote/);
+  }
+});

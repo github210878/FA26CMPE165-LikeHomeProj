@@ -1,6 +1,8 @@
 from uuid import UUID
+
 from sqlalchemy.orm import Session
 
+from app.models.hotel import Hotel
 from app.models.partner_model import HotelPartner
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
