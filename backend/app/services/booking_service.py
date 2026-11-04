@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.config.constants import Constants
 from app.models.hotel import Hotel
-from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.repositories import booking_dao, user_dao
@@ -212,7 +211,8 @@ def pay_booking_payment(db: Session, payment_id: int, user_id: int) -> PaymentRe
         user = booking_dao.lock_active_user_for_payment(db, user_id)
         if user is None:
             raise HTTPException(
-                status_code=401, detail="User is inactive or does not exist",
+                status_code=401,
+                detail="User is inactive or does not exist",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         reservation = booking_dao.lock_owned_reservation(db, reservation_id, user_id)
@@ -387,3 +387,217 @@ def pay_with_reward_points(
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to record payment") from exc
+
+
+def modify_booking(
+    db: Session,
+    reservation_id: int,
+    booking_info: BookingRequest,
+    user_id: int,
+) -> BookingResponse:
+    """Modify an existing confirmed booking transactionally."""
+    try:
+        # Verify ownership and reservation existence.
+        reservation = booking_dao.get_reservation_by_id(
+            db,
+            reservation_id,
+            user_id,
+        )
+
+        if reservation is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Reservation not found",
+            )
+
+        if reservation.status != "confirmed":
+            raise HTTPException(
+                status_code=409,
+                detail="Reservation cannot be modified",
+            )
+
+        nights = (booking_info.check_out_date - booking_info.check_in_date).days
+
+        if nights <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Check-out must be after check-in",
+            )
+
+        # Revalidate the latest hotel quote.
+        quote = hotel_service.revalidate_hotel(
+            HotelRevalidationRequest(
+                property_token=booking_info.hotel_token,
+                q=booking_info.q,
+                check_in_date=booking_info.check_in_date,
+                check_out_date=booking_info.check_out_date,
+                adults=booking_info.adults,
+                children=booking_info.children,
+                currency=booking_info.currency,
+                gl=booking_info.gl,
+                hl=booking_info.hl,
+            )
+        )
+
+        nightly_price = _money(Decimal(str(quote.current_price_per_night)))
+        payment_amount = _money(Decimal(str(quote.likehome_payment_amount)))
+        total_price = _money(Decimal(str(quote.likehome_reservation_total)))
+
+        # Verify that the client quote is still current.
+        if (
+            _money(Decimal(str(booking_info.price_per_night))) != nightly_price
+            or _money(Decimal(str(booking_info.accepted_payment_amount)))
+            != payment_amount
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=("Rate changed; " "revalidate and review the current quote"),
+            )
+
+        if (
+            nightly_price > MAX_MONEY
+            or total_price > MAX_MONEY
+            or payment_amount > MAX_MONEY
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Booking amount exceeds supported range",
+            )
+
+        # End the previous read transaction before locking rows.
+        db.rollback()
+
+        # Lock the reservation and reload the latest state.
+        reservation = booking_dao.lock_owned_reservation(
+            db,
+            reservation_id,
+            user_id,
+        )
+
+        if reservation is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Reservation not found",
+            )
+
+        if reservation.status != "confirmed":
+            raise HTTPException(
+                status_code=409,
+                detail="Reservation cannot be modified",
+            )
+
+        # This endpoint only modifies the existing hotel booking.
+        existing_hotel = db.get(
+            Hotel,
+            reservation.room_type.hotel_id,
+        )
+
+        if existing_hotel is None or existing_hotel.hotel_token != quote.property_token:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Changing the hotel is not supported "
+                    "when modifying a reservation"
+                ),
+            )
+
+        # Check whether the new dates overlap with another booking.
+        # The current reservation must be excluded from this check.
+        has_overlap = booking_dao.check_if_user_booked_by_date_range_excluding(
+            db,
+            user_id,
+            booking_info.check_in_date,
+            booking_info.check_out_date,
+            reservation_id,
+        )
+
+        if has_overlap:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "User already has another booking "
+                    "that overlaps with the given date"
+                ),
+            )
+
+        # Find and lock the related booking payment.
+        payment_id = booking_dao.get_payment_id_by_reservation_id(
+            db,
+            reservation_id,
+        )
+
+        if payment_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Booking payment not found",
+            )
+
+        payment = booking_dao.lock_booking_payment(
+            db,
+            payment_id,
+            reservation_id,
+        )
+
+        if payment is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Booking payment not found",
+            )
+
+        if payment.payment_type != "booking":
+            raise HTTPException(
+                status_code=409,
+                detail="Invalid booking payment",
+            )
+
+        # A paid reservation cannot be modified.
+        # The user must request a refund first.
+        if payment.payment_status == "paid":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Paid reservations cannot be updated. "
+                    "A refund is required before modifying "
+                    "the reservation."
+                ),
+            )
+
+        if payment.payment_status != "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="Booking payment cannot be modified",
+            )
+
+        # Update reservation information.
+        reservation.guest_full_name = booking_info.guest_full_name
+        reservation.guest_email = booking_info.guest_email
+        reservation.check_in_date = booking_info.check_in_date
+        reservation.check_out_date = booking_info.check_out_date
+        reservation.total_price = float(total_price)
+
+        # Since the payment is pending, its amount can be updated.
+        payment.amount = float(payment_amount)
+
+        response = BookingResponse(
+            user_id=user_id,
+            hotel_id=reservation.room_type.hotel_id,
+            room_type_id=reservation.room_type_id,
+            reservation_id=reservation.reservation_id,
+            payment_id=payment.payment_id,
+            booking_reference=_booking_reference(reservation.reservation_id),
+            status=reservation.status,
+        )
+
+        db.commit()
+        return response
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to modify reservation",
+        ) from exc

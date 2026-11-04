@@ -81,6 +81,22 @@ def create_booking(
     return booking_service.create_booking(db, booking_info, user_id)
 
 
+@router.post("/modify/{reservation_id}", response_model=BookingResponse)
+def modify_booking(
+    reservation_id: int,
+    booking_info: BookingRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Modify an existing booking for the current user.
+    This function checks if the user has a booking with the given reservation ID.
+    If the user does not have a booking with the given reservation ID, it raises an HTTPException.
+    Otherwise, it modifies the existing hotel, room type, reservation, and payment record in the database.
+    """
+    return booking_service.modify_booking(db, reservation_id, booking_info, user_id)
+
+
 @router.get("/get-all-bookings", response_model=list[BookingListItem])
 def get_all_bookings(
     db: Session = Depends(get_db),
