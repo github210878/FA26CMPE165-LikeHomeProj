@@ -227,9 +227,11 @@ export default function SearchExperience({ initialSearch }: { initialSearch?: Se
           <>
             <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <p role="status" className="text-sm leading-6 text-slate-600">{filteredHotels.length} of {results.properties.length} loaded stays match for {results.search_query}.</p>
-              <HotelSortSelector id="hotel-sort" value={sort} onChange={setSort} />
+              <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+                <HotelFilters values={filters} amenityOptions={amenityOptions} onChange={setFilters} onClear={clearFilters} />
+                <HotelSortSelector id="hotel-sort" value={sort} onChange={setSort} />
+              </div>
             </div>
-            <HotelFilters values={filters} amenityOptions={amenityOptions} onChange={setFilters} onClear={clearFilters} />
             {filteredHotels.length === 0 && (
               <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-sm leading-6 text-slate-600">No stays match your current filters.</p>
