@@ -1,17 +1,26 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/AuthProvider";
+import { ApiError } from "@/lib/api";
 import type { BookingListItem } from "@/lib/api-types";
+import { getCancellationCharge } from "@/lib/bookings";
 
 type Props = {
   booking: BookingListItem;
   submitting: boolean;
   onKeep: () => void;
   onConfirm: () => void;
-  feePreview?: ReactNode;
 };
 
-export default function CancelBookingDialog({ booking, submitting, onKeep, onConfirm, feePreview }: Props) {
+export default function CancelBookingDialog({ booking, submitting, onKeep, onConfirm }: Props) {
+  const router = useRouter();
+  const { invalidateSession } = useAuth();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
+  const [chargeState, setChargeState] = useState<
+    { kind: "loading" } | { kind: "success"; amount: number } | { kind: "error" }
+  >({ kind: "loading" });
+  const [chargeAttempt, setChargeAttempt] = useState(0);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -27,6 +36,22 @@ export default function CancelBookingDialog({ booking, submitting, onKeep, onCon
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    getCancellationCharge(booking.reservation_id).then((response) => {
+      if (active) setChargeState({ kind: "success", amount: response.cancellation_charge });
+    }).catch((error: unknown) => {
+      if (!active) return;
+      if (error instanceof ApiError && error.status === 401) {
+        invalidateSession();
+        router.replace("/login");
+        return;
+      }
+      setChargeState({ kind: "error" });
+    });
+    return () => { active = false; };
+  }, [booking.reservation_id, chargeAttempt, invalidateSession, router]);
 
   const headingId = `cancel-booking-${booking.reservation_id}-title`;
   const descriptionId = `cancel-booking-${booking.reservation_id}-description`;
@@ -64,12 +89,26 @@ export default function CancelBookingDialog({ booking, submitting, onKeep, onCon
           <div className="col-span-2"><dt className="text-slate-600">Reservation ID</dt><dd className="mt-1 font-medium">{booking.reservation_id}</dd></div>
         </dl>
       </div>
-      <div className="mt-4 text-sm leading-6 text-slate-700">{feePreview ?? <p>Cancellation charges may apply. Cancelling does not confirm an external refund.</p>}</div>
+      
+      <div className="mt-4 text-sm leading-6 text-slate-700">
+        {chargeState.kind === "success"
+          ? <p>Cancellation charge: <strong>{chargeState.amount.toFixed(2)} USD</strong>. Cancelling does not confirm an external refund.</p>
+          : chargeState.kind === "error"
+            ? <div role="alert">
+                <p>We could not load the cancellation charge. Please try again before cancelling.</p>
+                <button type="button" onClick={() => {
+                  setChargeState({ kind: "loading" });
+                  setChargeAttempt((attempt) => attempt + 1);
+                }}
+                  className="mt-2 min-h-11 font-medium text-teal-700 underline">Retry charge</button>
+              </div>
+            : <p role="status">Loading cancellation charge…</p>}
+      </div>
       <p role="status" className="mt-4 text-sm text-slate-700">{submitting ? "Cancelling your booking. Please wait…" : "Your booking stays active unless you confirm cancellation."}</p>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <button ref={keepRef} type="button" disabled={submitting} onClick={onKeep}
           className="min-h-12 flex-1 rounded-xl border border-teal-700 px-4 font-semibold text-teal-800 hover:bg-teal-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700 disabled:cursor-wait disabled:opacity-60">Keep booking</button>
-        <button type="button" disabled={submitting} onClick={onConfirm}
+        <button type="button" disabled={submitting || chargeState.kind !== "success"} onClick={onConfirm}
           className="min-h-12 flex-1 rounded-xl bg-red-700 px-4 font-semibold text-white hover:bg-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 disabled:cursor-wait disabled:opacity-60">{submitting ? "Cancelling…" : "Confirm cancellation"}</button>
       </div>
     </dialog>

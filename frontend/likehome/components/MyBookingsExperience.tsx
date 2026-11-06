@@ -173,7 +173,7 @@ export default function MyBookingsExperience() {
 
   async function confirmCancellation(reservationId: number) {
     if (load.kind !== "success" || cancellationPhase.kind !== "confirming" ||
-        cancellationPhase.reservationId !== reservationId) return;
+      cancellationPhase.reservationId !== reservationId) return;
     if (!submissionGuard.current.tryStart(reservationId)) return;
 
     setCancellationPhase((phase) => startCancellation(phase, reservationId));
@@ -191,8 +191,10 @@ export default function MyBookingsExperience() {
             .map((entry) => ({ ...entry, payment_status: response.booking_payment_status }));
           if (Number.isSafeInteger(response.cancellation_payment_id) && Number.isFinite(response.cancellation_amount)
             && response.cancellation_payment_status === "pending") {
-            payments.push({ payment_id: response.cancellation_payment_id, reservation_id: reservationId,
-              amount: response.cancellation_amount, payment_type: "cancellation", payment_status: response.cancellation_payment_status });
+            payments.push({
+              payment_id: response.cancellation_payment_id, reservation_id: reservationId,
+              amount: response.cancellation_amount, payment_type: "cancellation", payment_status: response.cancellation_payment_status
+            });
           }
           recordedCancellations.current.set(reservationId, { booking: { ...booking, status: response.status }, payments });
         }
@@ -278,108 +280,117 @@ export default function MyBookingsExperience() {
 
   return (
     <>{notice}
-    <ul className="mt-8 space-y-4">
-      {load.bookings.map((booking) => (
-        <li key={booking.reservation_id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-950">{booking.hotel_name}</h2>
-              <p className="mt-1 text-slate-700">{booking.room_type_name}</p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm capitalize text-slate-700">{booking.status}</span>
-          </div>
-          {booking.hotel_address && <p className="mt-3 text-sm text-slate-600">{booking.hotel_address}</p>}
-          <dl className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
-            <div><dt className="font-medium text-slate-900">Check-in</dt><dd><time dateTime={booking.check_in_date}>{booking.check_in_date.slice(0, 10)}</time></dd></div>
-            <div><dt className="font-medium text-slate-900">Check-out</dt><dd><time dateTime={booking.check_out_date}>{booking.check_out_date.slice(0, 10)}</time></dd></div>
-            <div><dt className="font-medium text-slate-900">Total price</dt><dd>{booking.total_price.toFixed(2)}</dd></div>
-            <div><dt className="font-medium text-slate-900">Reservation ID</dt><dd>{booking.reservation_id}</dd></div>
-          </dl>
-          {(() => {
-            const payment = bookingPaymentForReservation(load.payments, booking.reservation_id);
-            const cancellation = load.payments.find((entry) => entry.reservation_id === booking.reservation_id && entry.payment_type === "cancellation");
-            return (payment || cancellation) && <div className="mt-4 text-sm text-slate-700">
-              {payment && <p>LikeHome booking payment: <span className="capitalize">{payment.payment_status}</span> ({payment.amount.toFixed(2)} USD)
-                {payment.payment_status === "refunded" && <span> Internal record only; this does not confirm an external refund.</span>}</p>}
-              {cancellation && <p>LikeHome cancellation charge: <span className="capitalize">{cancellation.payment_status}</span> ({cancellation.amount.toFixed(2)} USD). No external charge was made.</p>}
-              {payment && booking.status === "confirmed" && payment.payment_status === "pending" &&
-                <Link href={paymentHref(payment.payment_id)} className="mt-2 inline-block min-h-11 font-medium text-teal-700 underline">Complete payment</Link>}
-            </div>;
-          })()}
-          <button type="button" aria-expanded={expandedReservationId === booking.reservation_id}
-            onClick={() => setExpandedReservationId((current) => current === booking.reservation_id ? null : booking.reservation_id)}
-            className="mt-4 min-h-11 font-medium text-teal-700 underline">
-            {expandedReservationId === booking.reservation_id ? "Hide details" : "View details"}
-          </button>
-
-    {expandedReservationId === booking.reservation_id && (
-        <BookingDetailPanel
-            reservationId={booking.reservation_id}
-            reservationStatus={booking.status}
-        />
-    )}
-
-    {booking.status === "confirmed" && (
-        <div className="mt-4">
-          <button
-              type="button"
-              aria-expanded={changingReservationId === booking.reservation_id}
-              onClick={() =>
-                  setChangingReservationId((current) =>
-                      current === booking.reservation_id
-                          ? null
-                          : booking.reservation_id
-                  )
-              }
-              className="min-h-11 font-medium text-teal-700 underline"
-          >
-            {changingReservationId === booking.reservation_id
-                ? "Hide Change Booking"
-                : "Change Booking"}
-          </button>
-
-          {changingReservationId === booking.reservation_id && (
-              <div className="mt-4 rounded-lg border border-slate-200 p-4">
-                <ReservationChangeFlow
-                    key={booking.reservation_id}
-                    reservationId={booking.reservation_id}
-                    checkInDate={booking.check_in_date}
-                    checkOutDate={booking.check_out_date}
-                    enableConfirmation={false}
-                    onRefreshCurrent={async () => {
-                      const [bookings, payments] = await Promise.all([
-                        getMyBookings(),
-                        getMyPayments(),
-                      ]);
-
-                      setLoad(
-                          bookings.length === 0
-                              ? { kind: "empty" }
-                              : { kind: "success", bookings, payments }
-                      );
-                    }}
-                />
+      <ul className="mt-8 space-y-4">
+        {load.bookings.map((booking) => (
+          <li key={booking.reservation_id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-950">{booking.hotel_name}</h2>
+                <p className="mt-1 text-slate-700">{booking.room_type_name}</p>
               </div>
-          )}
-        </div>
-    )}
-          {canCancelBooking(booking.status) && !blockedReservationIds.has(booking.reservation_id) && (
-            <>
-              <button type="button" disabled={cancellationPhase.kind === "submitting"} aria-haspopup="dialog"
-                onClick={() => { setCancellationNotice(null); setCancellationPhase((phase) => requestCancellation(phase, booking.reservation_id, booking.status)); }}
-                className="ml-5 mt-4 min-h-11 font-medium text-red-700 underline disabled:opacity-60">
-                Cancel booking
-              </button>
-              {cancellationPhase.kind !== "idle" && cancellationPhase.reservationId === booking.reservation_id && (
-                <CancelBookingDialog booking={booking} submitting={cancellationPhase.kind === "submitting"}
-                  onKeep={() => setCancellationPhase((phase) => keepBooking(phase))}
-                  onConfirm={() => void confirmCancellation(booking.reservation_id)} />
-              )}
-            </>
-          )}
-        </li>
-      ))}
-    </ul>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm capitalize text-slate-700">{booking.status}</span>
+            </div>
+            {booking.hotel_address && <p className="mt-3 text-sm text-slate-600">{booking.hotel_address}</p>}
+            <dl className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
+              <div><dt className="font-medium text-slate-900">Check-in</dt> <dd><time dateTime={booking.check_in_date}>{booking.check_in_date.slice(0, 10)}</time></dd></div>
+              <div><dt className="font-medium text-slate-900">Check-out</dt> <dd><time dateTime={booking.check_out_date}>{booking.check_out_date.slice(0, 10)}</time></dd></div>
+              <div><dt className="font-medium text-slate-900">Total price</dt> <dd>{booking.total_price.toFixed(2)}</dd></div>
+              <div><dt className="font-medium text-slate-900">Reservation ID</dt> <dd>{booking.reservation_id}</dd></div>
+            </dl>
+            {(() => {
+              const payment = bookingPaymentForReservation(load.payments, booking.reservation_id);
+              const cancellation = load.payments.find((entry) => entry.reservation_id === booking.reservation_id && entry.payment_type === "cancellation");
+              return (payment || cancellation) &&
+                <div className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
+                  
+                    {payment && <div><dt className="font-medium text-slate-900"> LikeHome Booking Payment: </dt>
+                      <strong className="capitalize">{payment.payment_status} {payment.amount.toFixed(2)} USD</strong>
+                      {payment.payment_status === "refunded" && <p> Internal record only; this does not confirm an external refund.</p>}
+                    </div>}
+
+                    {cancellation && <div><dt className="font-medium text-slate-900"> LikeHome Cancellation Charge: </dt>
+                      <strong className="capitalize">{cancellation.payment_status} {cancellation.amount.toFixed(2)} USD</strong>
+                      <p>No external charge was made.</p>
+                    </div>}
+                    {payment && booking.status === "confirmed" && payment.payment_status === "pending" &&
+                      <Link href={paymentHref(payment.payment_id)} className="mt-2 inline-block min-h-11 font-medium text-teal-700 underline">Complete payment</Link>}
+                  
+                </div>;
+            })()}
+            <button type="button" aria-expanded={expandedReservationId === booking.reservation_id}
+              onClick={() => setExpandedReservationId((current) => current === booking.reservation_id ? null : booking.reservation_id)}
+              className="mt-4 min-h-11 font-medium text-teal-700 underline">
+              {expandedReservationId === booking.reservation_id ? "Hide details" : "View details"}
+            </button>
+
+            {expandedReservationId === booking.reservation_id && (
+              <BookingDetailPanel
+                reservationId={booking.reservation_id}
+                reservationStatus={booking.status}
+              />
+            )}
+
+            {booking.status === "confirmed" && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  aria-expanded={changingReservationId === booking.reservation_id}
+                  onClick={() =>
+                    setChangingReservationId((current) =>
+                      current === booking.reservation_id
+                        ? null
+                        : booking.reservation_id
+                    )
+                  }
+                  className="min-h-11 font-medium text-teal-700 underline"
+                >
+                  {changingReservationId === booking.reservation_id
+                    ? "Hide Change Booking"
+                    : "Change Booking"}
+                </button>
+
+                {changingReservationId === booking.reservation_id && (
+                  <div className="mt-4 rounded-lg border border-slate-200 p-4">
+                    <ReservationChangeFlow
+                      key={booking.reservation_id}
+                      reservationId={booking.reservation_id}
+                      checkInDate={booking.check_in_date}
+                      checkOutDate={booking.check_out_date}
+                      enableConfirmation={false}
+                      onRefreshCurrent={async () => {
+                        const [bookings, payments] = await Promise.all([
+                          getMyBookings(),
+                          getMyPayments(),
+                        ]);
+
+                        setLoad(
+                          bookings.length === 0
+                            ? { kind: "empty" }
+                            : { kind: "success", bookings, payments }
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {canCancelBooking(booking.status) && !blockedReservationIds.has(booking.reservation_id) && (
+              <>
+                <button type="button" disabled={cancellationPhase.kind === "submitting"} aria-haspopup="dialog"
+                  onClick={() => { setCancellationNotice(null); setCancellationPhase((phase) => requestCancellation(phase, booking.reservation_id, booking.status)); }}
+                  className="ml-5 mt-4 min-h-11 font-medium text-red-700 underline disabled:opacity-60">
+                  Cancel booking
+                </button>
+                {cancellationPhase.kind !== "idle" && cancellationPhase.reservationId === booking.reservation_id && (
+                  <CancelBookingDialog booking={booking} submitting={cancellationPhase.kind === "submitting"}
+                    onKeep={() => setCancellationPhase((phase) => keepBooking(phase))}
+                    onConfirm={() => void confirmCancellation(booking.reservation_id)} />
+                )}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }
