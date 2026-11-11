@@ -204,3 +204,15 @@ def pay_with_reward_points(
     return booking_service.pay_with_reward_points(
         db=db, user_id=user_id, payment_id=payment_id
     )
+
+
+@router.post("/apply-balance/{payment_id}/{amount}")
+def apply_balance(
+    payment_id: int,
+    amount: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return booking_service.apply_balance(
+        db=db, user_id=user_id, payment_id=payment_id, amount=amount
+    )

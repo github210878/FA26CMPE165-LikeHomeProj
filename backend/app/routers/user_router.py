@@ -67,3 +67,33 @@ def get_current_user(
 @router.get("/get-reward-points")
 def get_reward_points(user_id: int = Depends(get_current_user_id)):
     return user_service.get_reward_points(user_id)
+
+
+@router.get("/get-balance")
+def get_balance(
+    db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)
+):
+    return user_service.get_balance(db, user_id)
+
+
+@router.get("/redeem-reward-points/{amount}")
+def redeem_reward_points(
+    amount: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return user_service.redeem_reward_points(db, user_id, amount)
+
+
+@router.get("/get-payment-history")
+def get_payment_history(
+    db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)
+):
+    return user_service.get_payment_history(db, user_id)
+
+
+@router.get("/get-reward-points-history")
+def get_reward_points_history(
+    db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)
+):
+    return user_service.get_reward_points_history(db, user_id)
