@@ -181,9 +181,7 @@ def get_cancellation_charge(
     if reservation is None:
         raise HTTPException(status_code=404, detail="Reservation not found")
     if reservation.status != "confirmed":
-        raise HTTPException(
-            status_code=409, detail="Reservation cannot be cancelled"
-        )
+        raise HTTPException(status_code=409, detail="Reservation cannot be cancelled")
 
     fee = calculate_cancellation_fee(reservation.total_price)
     return CancellationChargeResponse(
@@ -600,4 +598,138 @@ def modify_booking(
         raise HTTPException(
             status_code=500,
             detail="Failed to modify reservation",
+        ) from exc
+
+
+def apply_balance(
+    db: Session,
+    payment_id: int,
+    amount: int,
+    user_id: int,
+) -> PaymentResponse:
+    """Apply user balance to a pending booking payment."""
+
+    if amount <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Amount must be greater than zero",
+        )
+
+    try:
+        reservation_id = booking_dao.get_owned_payment_reservation_id(
+            db,
+            payment_id,
+            user_id,
+        )
+
+        if reservation_id is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Payment not found",
+            )
+
+        # Reset the snapshot created by the ownership lookup.
+        db.rollback()
+
+        # Lock order:
+        # reservation -> payment -> user balance
+        reservation = booking_dao.lock_owned_reservation(
+            db,
+            reservation_id,
+            user_id,
+        )
+
+        if reservation is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Payment not found",
+            )
+
+        payment = booking_dao.lock_booking_payment(
+            db,
+            payment_id,
+            reservation_id,
+        )
+
+        if payment is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Payment not found",
+            )
+
+        if payment.payment_type != "booking":
+            raise HTTPException(
+                status_code=409,
+                detail="Payment cannot be completed",
+            )
+
+        if reservation.status == "cancelled":
+            raise HTTPException(
+                status_code=409,
+                detail="Payment cannot be completed",
+            )
+
+        if payment.payment_status == "paid":
+            raise HTTPException(
+                status_code=409,
+                detail="Payment has already been completed",
+            )
+
+        if payment.payment_status != "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="Payment cannot be completed",
+            )
+
+        if reservation.status != "confirmed":
+            raise HTTPException(
+                status_code=409,
+                detail="Payment cannot be completed",
+            )
+
+        # Lock first, then read the current balance.
+        balance_row = user_dao.lock_user_balance(
+            db=db,
+            user_id=user_id,
+        )
+
+        if balance_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail="User balance not found",
+            )
+
+        user_balance = balance_row.balance
+
+        if user_balance < amount:
+            raise HTTPException(
+                status_code=409,
+                detail="Not enough balance",
+            )
+
+        if amount >= payment.amount:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Balance amount must be less than " "the remaining payment amount"
+                ),
+            )
+
+        balance_row.balance -= amount
+        payment.amount -= amount
+
+        result = PaymentResponse(**booking_dao.payment_result(payment))
+
+        db.commit()
+        return result
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to apply user balance",
         ) from exc
