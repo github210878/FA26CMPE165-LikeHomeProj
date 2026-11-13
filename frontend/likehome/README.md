@@ -135,18 +135,3 @@ stored at `public/images/signin-seaview.jpg`, under the Pexels License.
 
 The sign-up panel uses the user-supplied Santorini photograph, stored at
 `public/images/signup-greece.png`.
-
-## Shortlist save/remove controls (4.6.1)
-
-Search result cards use the proposed `jerome/s6-shortlist-api` contract:
-authenticated `GET /shortlist` returns `{ properties: [{ property_token }] }`,
-`POST /shortlist` accepts `{ property_token }` and returns the saved identity,
-and `DELETE /shortlist/{property_token}` returns an empty 204 response.
-POST 409 means the hotel is already saved. Requests use the existing API base URL.
-
-Saved state is read once when eligible cards appear, shared between cards, and
-cleared when authentication or account identity changes. Save/remove states change
-only after server acknowledgement. Failed reads show a retry action, not an empty
-shortlist; failed writes preserve the previous state. No local persistence fallback
-is used. The API branch and Jesse's database model/DAO must be completed and merged
-before this UI can persist a user's shortlist against the real backend.
