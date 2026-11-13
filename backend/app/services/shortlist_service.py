@@ -1,5 +1,6 @@
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.repositories import shortlist_dao
@@ -21,10 +22,18 @@ def add_hotel(db: Session, user_id: int, property_token: str):
             status_code=status.HTTP_409_CONFLICT,
             detail="Hotel is already in your shortlist",
         )
-
-    saved_hotel = shortlist_dao.add_saved_hotel(
-        db, user_id, property_token
-    )
+    try:
+        saved_hotel = shortlist_dao.add_saved_hotel(
+            db, user_id, property_token
+        )
+    except IntegrityError:
+        # The DAO already rolls back the failed transaction.
+        if shortlist_dao.get_saved_hotel(db, user_id, property_token):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Hotel is already in your shortlist",
+            )
+        raise
 
     return ShortlistItemResponse(
         property_token=saved_hotel.property_token

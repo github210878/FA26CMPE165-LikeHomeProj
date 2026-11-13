@@ -1,31 +1,59 @@
 
 from sqlalchemy.orm import Session
 
-# TODO: Import Jesse's shortlist model when available.
-# Expected model fields: user_id, property_token
+from app.models.shortlist import Shortlist
 
 
-def get_saved_hotel(
-        db: Session, user_id: int, property_token: str
-):
-    """Find one saved hotel for this user."""
-    raise NotImplementedError("Waiting for shortlist database model")
+def get_saved_hotel(db: Session, user_id: int, property_token: str):
+    return (
+        db.query(Shortlist)
+        .filter(
+            Shortlist.user_id == user_id,
+            Shortlist.property_token == property_token,
+            )
+        .first()
+    )
 
 
 def get_saved_hotels(db: Session, user_id: int):
-    """Retrieve all hotels saved by this user."""
-    raise NotImplementedError("Waiting for shortlist database model")
+    return (
+        db.query(Shortlist)
+        .filter(Shortlist.user_id == user_id)
+        .order_by(Shortlist.shortlist_id.asc())
+        .all()
+    )
 
 
-def add_saved_hotel(
-        db: Session, user_id: int, property_token: str
-):
-    """Save a hotel for this user."""
-    raise NotImplementedError("Waiting for shortlist database model")
+def add_saved_hotel(db: Session, user_id: int, property_token: str):
+    saved_hotel = Shortlist(
+        user_id=user_id,
+        property_token=property_token,
+    )
+
+    db.add(saved_hotel)
+
+    try:
+        db.commit()
+        db.refresh(saved_hotel)
+    except Exception:
+        db.rollback()
+        raise
+
+    return saved_hotel
 
 
-def delete_saved_hotel(
-        db: Session, user_id: int, property_token: str
-):
-    """Remove a hotel saved by this user."""
-    raise NotImplementedError("Waiting for shortlist database model")
+def delete_saved_hotel(db: Session, user_id: int, property_token: str):
+    saved_hotel = get_saved_hotel(db, user_id, property_token)
+
+    if saved_hotel is None:
+        return False
+
+    db.delete(saved_hotel)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return True

@@ -91,3 +91,48 @@ def test_remove_missing_hotel(monkeypatch):
         shortlist_service.remove_hotel(db, 1, "missing-hotel")
 
     assert exc.value.status_code == 404
+
+def test_duplicate_database_insert_returns_409(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services import shortlist_service
+
+    db = MagicMock()
+    lookup_count = 0
+
+    def find_hotel(db, user_id, token):
+        nonlocal lookup_count
+        lookup_count += 1
+
+        if lookup_count == 1:
+            return None
+
+        return SimpleNamespace(property_token=token)
+
+    def duplicate_insert(db, user_id, token):
+        raise IntegrityError(
+            "INSERT INTO shortlists",
+            {},
+            Exception("Duplicate entry"),
+        )
+
+    monkeypatch.setattr(
+        shortlist_service.shortlist_dao,
+        "get_saved_hotel",
+        find_hotel,
+    )
+
+    monkeypatch.setattr(
+        shortlist_service.shortlist_dao,
+        "add_saved_hotel",
+        duplicate_insert,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        shortlist_service.add_hotel(
+            db, 1, "hotel-123"
+        )
+
+    assert exc.value.status_code == 409
