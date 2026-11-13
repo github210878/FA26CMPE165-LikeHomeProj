@@ -44,6 +44,14 @@ export function getAuthorizedJson<T>(path: string, accessToken: string): Promise
   });
 }
 
+export async function deleteAuthorized(path: string, accessToken: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new ApiError(response.status);
+}
+
 export function postAuthorizedJson<TResponse, TRequest = never>(
   path: string,
   accessToken: string,
