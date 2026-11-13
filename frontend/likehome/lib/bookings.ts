@@ -1,5 +1,5 @@
 import { ApiError, getAuthorizedJson, postAuthorizedJson } from "./api.ts";
-import type { AdjustmentDetailResponse, AdjustmentSettlementRequest, AdjustmentSettlementResponse, BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationResponse, HotelRevalidationResponse, PaymentResponse, ReservationChangeConfirmRequest, ReservationChangeQuoteResponse, ReservationChangeReceiptAdjustment, ReservationChangeReceiptResponse, ReservationChangeReviewRequest, ReservationFinancialSummary } from "./api-types.ts";
+import type { AdjustmentDetailResponse, AdjustmentSettlementRequest, AdjustmentSettlementResponse, BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationChargeResponse, CancellationResponse, HotelRevalidationResponse, PaymentResponse, ReservationChangeConfirmRequest, ReservationChangeQuoteResponse, ReservationChangeReceiptAdjustment, ReservationChangeReceiptResponse, ReservationChangeReviewRequest, ReservationFinancialSummary } from "./api-types.ts";
 import { validateSearchInputs } from "./search-validation.mjs";
 import { getAccessToken } from "./token-storage.ts";
 
@@ -135,6 +135,34 @@ function isCancellationResponse(value: unknown): value is CancellationResponse {
     Number.isInteger(value.cancellation_payment_id) && (value.cancellation_payment_id as number) > 0 &&
     typeof value.cancellation_amount === "number" && Number.isFinite(value.cancellation_amount) && value.cancellation_amount >= 0 &&
     value.cancellation_payment_status === "pending";
+}
+
+function isCancellationChargeResponse(value: unknown): value is CancellationChargeResponse {
+  return isRecord(value) &&
+    Number.isInteger(value.reservation_id) && (value.reservation_id as number) > 0 &&
+    typeof value.reservation_total === "number" && Number.isFinite(value.reservation_total) && value.reservation_total >= 0 &&
+    typeof value.cancellation_fee_rate === "number" && Number.isFinite(value.cancellation_fee_rate) &&
+    value.cancellation_fee_rate >= 0 && value.cancellation_fee_rate <= 1 &&
+    typeof value.cancellation_charge === "number" && Number.isFinite(value.cancellation_charge) && value.cancellation_charge >= 0 &&
+    value.currency === "USD" &&
+    value.reservation_status === "confirmed";
+}
+
+export async function getCancellationCharge(reservationId: number): Promise<CancellationChargeResponse> {
+  if (!Number.isInteger(reservationId) || reservationId <= 0) {
+    throw new Error("Invalid reservation ID");
+  }
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+
+  const response = await getAuthorizedJson<unknown>(
+    `/bookings/${reservationId}/cancellation-charge`,
+    token,
+  );
+  if (!isCancellationChargeResponse(response) || response.reservation_id !== reservationId) {
+    throw new Error("Cancellation charge returned an unexpected response");
+  }
+  return response;
 }
 
 export async function cancelBooking(reservationId: number): Promise<CancellationResponse> {

@@ -156,6 +156,15 @@ export type CancellationResponse = {
   cancellation_payment_status: "pending";
 };
 
+export type CancellationChargeResponse = {
+  reservation_id: number;
+  reservation_total: number;
+  cancellation_fee_rate: number;
+  cancellation_charge: number;
+  currency: "USD";
+  reservation_status: "confirmed";
+};
+
 // Internal ledger entries are separate from refunds, cash balances, and rewards.
 export type AdjustmentDetailResponse = {
   adjustment_id: number;

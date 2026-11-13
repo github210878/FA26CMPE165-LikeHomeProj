@@ -144,6 +144,14 @@ function harness(status = "authenticated") {
       default: () => null,
     },
   };
+  const dialogCode = ts.transpileModule(readFileSync(new URL("../components/CancelBookingDialog.tsx", import.meta.url), "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  const dialogModule = { exports: {} };
+  new Function("require", "module", "exports", dialogCode)(
+    (name) => name === "react" ? hooks : require(name), dialogModule, dialogModule.exports,
+  );
+  imports["@/components/CancelBookingDialog"] = { default: dialogModule.exports.default };
   const { outputText } = ts.transpileModule(readFileSync(new URL("../components/MyBookingsExperience.tsx", import.meta.url), "utf8"), {
     compilerOptions: { target: ts.ScriptTarget.ES2017, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   });
@@ -212,6 +220,30 @@ test("confirmed booking is visible with its existing controls before any cancell
   assert.match(text(view.card(12)), /confirmed/i);
   assert.equal(buttonsIn(view.card(12), "Cancel booking").length, 1);
   assert.equal(api.writes().length, 0);
+});
+
+test("cancel dialog identifies the stay and Keep booking or Escape dismisses without a write", async () => {
+  const { api, h } = await loaded();
+  for (const dismissal of ["keep", "escape"]) {
+    buttonsIn(h.render().card(12), "Cancel booking")[0].props.onClick();
+    const view = h.render();
+    const dialog = nodesIn(view.card(12)).find((node) => node.type === "dialog");
+    assert.ok(dialog);
+    assert.match(text(dialog), /Cancel this booking\?/);
+    assert.match(text(dialog), /Harbor House.*Queen room/);
+    assert.match(text(dialog), /2026-11-05.*2026-11-08/);
+    assert.match(text(dialog), /Cancellation charges may apply/);
+    assert.ok(dialog.props["aria-labelledby"]);
+    assert.ok(dialog.props["aria-describedby"]);
+    if (dismissal === "keep") buttonsIn(dialog, "Keep booking")[0].props.onClick();
+    else {
+      let prevented = false;
+      dialog.props.onCancel({ preventDefault: () => { prevented = true; } });
+      assert.equal(prevented, true);
+    }
+    assert.equal(nodesIn(h.render().card(12)).some((node) => node.type === "dialog"), false);
+    assert.equal(api.writes().length, 0);
+  }
 });
 
 test("confirmed cancellation preserves the row, original stay and other bookings with one explicit POST", async () => {
