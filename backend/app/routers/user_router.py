@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
@@ -65,8 +65,11 @@ def get_current_user(
 
 
 @router.get("/get-reward-points")
-def get_reward_points(user_id: int = Depends(get_current_user_id)):
-    return user_service.get_reward_points(user_id)
+def get_reward_points(
+        db: Session = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    return user_service.get_my_reward_points(db, user_id)
 
 
 @router.get("/get-balance")
@@ -97,3 +100,11 @@ def get_reward_points_history(
     db: Session = Depends(get_db), user_id: int = Depends(get_current_user_id)
 ):
     return user_service.get_reward_points_history(db, user_id)
+
+@router.get("/rewards/history")
+def get_reward_history(
+        db: Session = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    """Get reward history for the authenticated user."""
+    return user_service.get_my_reward_history(db, user_id)

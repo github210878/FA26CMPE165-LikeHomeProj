@@ -452,6 +452,6 @@ def test_actual_response_passes_unchanged_frontend_validator(summary_app, kind):
     # frontend app, API/auth module or external provider is imported or mounted.
     result = subprocess.run([node, "-e", FRONTEND_VALIDATOR, str(frontend)], input=response.text,
                             capture_output=True, text=True, timeout=20, check=False,
-                            env={"PATH": os.environ.get("PATH", "")})
+                            env=os.environ.copy())
     assert result.returncode == 0, result.stderr
     assert result.stdout == "compatible"
