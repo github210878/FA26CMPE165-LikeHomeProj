@@ -14,7 +14,7 @@ import { normalizedGuestInformation, validateGuestInformation, type GuestInforma
 import { CheckoutSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
 type Phase = "loading" | "ready" | "unavailable" | "provider-error" | "error" |
-  "submitting" | "conflict" | "booking-error" | "success";
+  "submitting" | "conflict" | "overlap" | "booking-error" | "success";
 
 const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -30,6 +30,11 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   const initialRequest = useRef<{ key: string; promise: Promise<HotelRevalidationResponse> } | null>(null);
   const submissionGuard = useRef(createBookingSubmissionGuard());
   const refreshing = useRef(false);
+  const overlapHeading = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (phase === "overlap") overlapHeading.current?.focus();
+  }, [phase]);
 
   const handleQuoteFailure = useCallback((error: unknown) => {
     setQuote(null);
@@ -118,10 +123,10 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
         router.replace("/login");
       } else if (hadQuoteConflict) {
         handleQuoteFailure(error);
+      } else if (error instanceof ApiError && error.status === 400) {
+        setPhase("overlap");
       } else {
-        setBookingError(error instanceof ApiError && error.status === 400
-          ? "You already have a booking that overlaps these dates. Review your bookings before trying again."
-          : "We could not create the booking. No booking success was confirmed. Please try again.");
+        setBookingError("We could not create the booking. No booking success was confirmed. Please try again.");
         setPhase("booking-error");
       }
     } finally {
@@ -161,6 +166,20 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   }
   if (phase === "success") {
     return <p role="status" className="mt-8 text-slate-700">Opening payment review…</p>;
+  }
+  if (phase === "overlap") {
+    const searchParams = new URLSearchParams({ destination: selection.q, guests: String(selection.adults) });
+    return <section aria-labelledby="booking-overlap-heading" className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-8">
+      <h2 id="booking-overlap-heading" ref={overlapHeading} tabIndex={-1} className="text-xl font-semibold text-amber-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-700">
+        These dates overlap another booking
+      </h2>
+      <p className="mt-3 leading-7 text-amber-950">You already have a booking during part or all of {selection.check_in_date} to {selection.check_out_date}. LikeHome does not allow overlapping stays for the same account, even at different hotels.</p>
+      <p className="mt-3 text-sm leading-6 text-amber-950">This reservation was not created. Your existing bookings are unchanged. Choose dates outside your booked stay, or review your bookings before continuing.</p>
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Link href={`/search?${searchParams}`} className="primary-button text-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">Choose different dates</Link>
+        <Link href="/my-bookings" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-teal-700 px-5 font-semibold text-teal-800 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">View my bookings</Link>
+      </div>
+    </section>;
   }
   if (!quote) return null;
   const priceBreakdown = checkoutPriceBreakdown(quote);

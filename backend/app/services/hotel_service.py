@@ -339,9 +339,9 @@ def revalidate_hotel(info: HotelRevalidationRequest) -> HotelRevalidationRespons
     base_total, source, capacity, provider_total = min(
         candidates, key=lambda row: (row[0], row[1])
     )
-    base_total = _cents(base_total)
-    nightly_average = _cents(base_total / nights)
-    reservation_total = _cents(base_total * Decimal(str(Constants.SERVICE_FEE)))
+    provider_total = _cents(provider_total)
+    nightly_average = _cents(provider_total / nights)
+    reservation_total = _cents(provider_total * Decimal(str(Constants.SERVICE_FEE)))
     payment_amount = _cents(reservation_total * Decimal(str(Constants.SALE_TAX)))
     if max(nightly_average, reservation_total, payment_amount) > Decimal("99999999.99"):
         raise HTTPException(

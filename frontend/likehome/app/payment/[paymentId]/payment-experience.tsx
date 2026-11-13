@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
 import type { PaymentResponse } from "@/lib/api-types";
+import PaymentForm from "@/components/PaymentForm";
 import { parseReservationId } from "@/lib/booking-confirmation";
 import { getPaymentDetails, payBookingPayment } from "@/lib/bookings";
 import { createBookingSubmissionGuard } from "@/lib/checkout";
@@ -95,16 +96,17 @@ export default function PaymentExperience({ paymentId }: { paymentId: string }) 
       <div><dt className="font-medium text-slate-950">Booking payment amount</dt><dd className="text-lg font-semibold text-slate-950">{dollars.format(payment.amount)}</dd></div>
     </dl>
     <p className="mt-5 text-sm text-slate-600">This is an internal LikeHome demo payment. Completing it records payment in LikeHome; no card or bank is charged.</p>
-    {paymentError && <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">{paymentError}</p>}
-    {payment.payment_status === "pending" && <div className="mt-5 flex flex-wrap gap-4">
-      <button type="button" disabled={submitting || Boolean(paymentError)} onClick={() => void submitPayment(payment)}
-        className="min-h-11 rounded-md bg-teal-700 px-5 font-semibold text-white hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60">
-        {submitting ? "Recording payment…" : "Complete LikeHome payment"}
-      </button>
-      {paymentError && <button type="button" onClick={() => { setPaymentError(""); setDetail({ kind: "loading" }); setAttempt((value) => value + 1); }} className="min-h-11 font-medium text-teal-700 underline">Refresh payment status</button>}
-    </div>}
-    {payment.payment_status === "paid" && <Link href={`/booking-confirmation/${payment.reservation_id}`} className="mt-5 inline-flex min-h-11 items-center rounded-md bg-teal-700 px-5 font-semibold text-white hover:bg-teal-800">View confirmation</Link>}
-    {(payment.payment_status === "failed" || payment.payment_status === "refunded") && <p className="mt-5 text-slate-700">This payment cannot be completed.</p>}
+    <PaymentForm
+      payment={payment}
+      submitting={submitting}
+      paymentError={paymentError}
+      onSubmit={() => void submitPayment(payment)}
+      onRefresh={() => {
+        setPaymentError("");
+        setDetail({ kind: "loading" });
+        setAttempt((value) => value + 1);
+      }}
+    />
     <Link href="/my-bookings" className="mt-5 block font-medium text-teal-700 underline">View My Bookings</Link>
   </div>;
 }
