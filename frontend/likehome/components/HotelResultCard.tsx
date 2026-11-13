@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { HotelSearchResult } from "@/lib/api-types";
 import { getHotelThumbnailUrl } from "@/lib/hotel-thumbnail";
+import SaveHotelButton from "@/components/SaveHotelButton";
 
 const dollarAmount = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -60,6 +61,7 @@ export default function HotelResultCard({ hotel, checkoutHref }: { hotel: HotelS
           Select stay
         </Link>
       )}
+      <div className="mt-4"><SaveHotelButton propertyToken={hotel.property_token} hotelName={hotel.name} /></div>
     </article>
   );
 }

@@ -827,6 +827,7 @@ test("filtered card keeps lazy thumbnail and Select stay href, including a price
     react: { useState: () => [null, () => {}] },
     "next/link": { default: ({ children, href, className }) => require("react").createElement("a", { href, className }, children) },
     "@/lib/hotel-thumbnail": { getHotelThumbnailUrl },
+    "@/components/SaveHotelButton": { default: () => null },
   });
   const result = { ...hotels[1], thumbnail: "https://images.example.com/hotel.jpg" };
   const href = checkoutHref(search, result);
