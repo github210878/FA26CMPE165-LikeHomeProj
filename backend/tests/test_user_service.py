@@ -8,9 +8,6 @@ tests.
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
-from pydantic import ValidationError
-
 from app.schemas.user_schema import (
     ChangePasswordRequest,
     DeleteUserRequest,
@@ -18,6 +15,8 @@ from app.schemas.user_schema import (
     RegisterUserRequest,
 )
 from app.services import user_service
+from fastapi import HTTPException
+from pydantic import ValidationError
 
 
 def make_user(**overrides):
@@ -34,7 +33,9 @@ def make_user(**overrides):
     return SimpleNamespace(**values)
 
 
-def test_register_normalizes_email_hashes_password_and_returns_public_fields(monkeypatch):
+def test_register_normalizes_email_hashes_password_and_returns_public_fields(
+    monkeypatch,
+):
     captured = {}
 
     monkeypatch.setattr(user_service.user_dao, "get_user_by_email", lambda **_: None)
