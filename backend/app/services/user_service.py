@@ -1,8 +1,14 @@
-from decimal import Decimal
+﻿from decimal import Decimal
 
 from fastapi import Depends, HTTPException
 from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
+
+from datetime import datetime
+from decimal import ROUND_FLOOR
+
+from app.models.payment import Payment
+from app.models.reservation import Reservation
 
 from app.config.constants import Constants
 from app.repositories import user_dao
@@ -124,18 +130,25 @@ def logout_user(db: Session, user_id: int):
     return {"status": True, "message": "Logged out successfully"}
 
 
-def get_my_reward_points(db: Session, user_id: int = Depends(get_current_user_id)):
-    """Query reward points by the user_id via user_dao"""
 
-    user = user_dao.get_user_by_id(user_id=user_id)
+def get_my_reward_points(db: Session, user_id: int):
+    """Return the authenticated user's current reward points."""
+
+    user = user_dao.get_user_by_id(
+        db=db,
+        user_id=user_id,
+    )
+
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
     return {
         "status": True,
         "reward_points": user.reward_points,
     }
-
-
 def get_balance(db: Session, user_id: int = Depends(get_current_user_id)):
     """Query balance by the user_id via user_dao"""
 
@@ -272,4 +285,82 @@ def get_reward_points_history(db: Session, user_id: int):
     return {
         "status": True,
         "reward_points_history": reward_points_history,
+    }
+
+def get_my_reward_history(db: Session, user_id: int):
+    """Return the authenticated user's earned and redeemed reward history."""
+
+    user = user_dao.get_user_by_id(db=db, user_id=user_id)
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    history = []
+
+    # Earned points from paid booking payments belonging to this user.
+    payments = (
+        db.query(Payment)
+        .join(
+            Reservation,
+            Payment.reservation_id == Reservation.reservation_id,
+            )
+        .filter(
+            Reservation.user_id == user_id,
+            Payment.payment_type == "booking",
+            Payment.payment_status == "paid",
+            )
+        .all()
+    )
+
+    for payment in payments:
+        # Booking payments currently award one point
+        # per completed dollar, not 100 points per dollar.
+        points = int(
+            Decimal(str(payment.amount)).to_integral_value(
+                rounding=ROUND_FLOOR
+            )
+        )
+
+        history.append({
+            "transaction_id": payment.payment_id,
+            "points_change": points,
+            "transaction_type": "earned",
+            "created_at": payment.created_at,
+        })
+
+    # Redeemed points from Jesse's existing database table.
+    redemptions = user_dao.get_redeem_history(
+        db=db,
+        user_id=user_id,
+    ) or []
+
+    for redemption in redemptions:
+        created_at = redemption.created_at
+
+        # The existing SQLAlchemy redemption model stores
+        # timestamps as strings, while the SQL table uses TIMESTAMP.
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+
+        history.append({
+            # Negative IDs distinguish redemption entries
+            # from payment IDs without creating another ledger.
+            "transaction_id": -redemption.redeem_id,
+            "points_change": -redemption.reward_points_redeemed,
+            "transaction_type": "redeemed",
+            "created_at": created_at,
+        })
+
+    history.sort(
+        key=lambda item: item["created_at"],
+        reverse=True,
+    )
+
+    return {
+        "status": True,
+        "reward_points": user.reward_points,
+        "history": history,
     }
