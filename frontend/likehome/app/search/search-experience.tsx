@@ -165,115 +165,115 @@ export default function SearchExperience({ initialSearch }: { initialSearch?: Se
           <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-5xl">Where would you like to stay?</h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-white/90">Somewhere new, somewhere familiar, somewhere just for you.</p>
           <div className="mt-8">
-      <SearchForm
-        compact
-        key={restoredSearch?.version ?? 0}
-        initialValues={restoredSearch?.values ?? initialSearch}
-        onSearch={submitSearch}
-        isLoading={status === "loading"}
-      />
+            <SearchForm
+              compact
+              key={restoredSearch?.version ?? 0}
+              initialValues={restoredSearch?.values ?? initialSearch}
+              onSearch={submitSearch}
+              isLoading={status === "loading"}
+            />
           </div>
         </div>
       </section>
       <div className="site-container pb-12">
-      <RecentSearches onReplay={replaySearch} isLoading={status === "loading"} />
+        <RecentSearches onReplay={replaySearch} isLoading={status === "loading"} />
 
-      {status === "idle" && (
-        <section className="mt-9" aria-labelledby="popular-destinations-heading">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 id="popular-destinations-heading" className="text-2xl font-semibold tracking-tight text-slate-950">Popular destinations</h2>
-              <p className="mt-2 text-sm text-slate-600">A little inspiration for your next trip.</p>
-            </div>
-            <Link href="/#destinations" className="inline-flex min-h-11 items-center text-sm font-semibold text-teal-800">Explore destinations →</Link>
-          </div>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {[
-              { name: "New York City", image: "new-york-city", description: "Iconic sights & skyline nights" },
-              { name: "Tokyo", image: "tokyo-skyline", description: "Neon streets & new discoveries" },
-              { name: "Lake Tahoe", image: "lake-tahoe", description: "Lakeside days & mountain air" },
-              { name: "Paris", image: "paris", description: "Riverside strolls & café mornings" },
-            ].map((destination) => (
-              <Link key={destination.name} href={`/search?destination=${encodeURIComponent(destination.name)}`} className="group relative aspect-[1.1] overflow-hidden rounded-2xl bg-slate-200 sm:aspect-[1.25]">
-                <Image src={`/images/${destination.image}.jpg`} alt="" fill sizes="(max-width: 1023px) 50vw, 25vw" className="object-cover transition-transform duration-300 group-hover:scale-105" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-4 sm:p-5">
-                  <div><h3 className="text-lg font-semibold text-white">{destination.name}</h3><p className="mt-1 text-xs leading-5 text-white/90">{destination.description}</p></div>
-                  <span aria-hidden="true" className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/70 text-xl text-white sm:flex">→</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-      <div className="mt-10 border-t border-slate-200 pt-8" aria-live="polite">
-        <h2 className="text-xl font-semibold text-slate-950">Available stays</h2>
-        {status === "idle" && <p className="mt-2 text-sm leading-6 text-slate-600">Enter a destination and dates to find available stays.</p>}
-        {status === "loading" && <SearchResultsSkeleton />}
-        {error && (
-          <div className="mt-4">
-            <ErrorState
-              title={error.title}
-              message={error.message}
-              onRetry={error.retryable ? retrySearch : undefined}
-              isRetrying={status === "loading"}
-            />
-          </div>
-        )}
-        {status === "success" && results?.properties.length === 0 && (
-          <p className="mt-2 text-sm leading-6 text-slate-600">No hotels found for this search. Try a different destination or dates.</p>
-        )}
-        {status === "success" && results && results.properties.length > 0 && (
-          <>
-            <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-              <p role="status" className="text-sm leading-6 text-slate-600">{filteredHotels.length} of {results.properties.length} loaded stays match for {results.search_query}.</p>
-              <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
-                <HotelFilters values={filters} amenityOptions={amenityOptions} onChange={setFilters} onClear={clearFilters} />
-                <HotelSortSelector id="hotel-sort" value={sort} onChange={setSort} />
+        {status === "idle" && (
+          <section className="mt-9" aria-labelledby="popular-destinations-heading">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 id="popular-destinations-heading" className="text-2xl font-semibold tracking-tight text-slate-950">Popular destinations</h2>
+                <p className="mt-2 text-sm text-slate-600">A little inspiration for your next trip.</p>
               </div>
+              <Link href="/#destinations" className="inline-flex min-h-11 items-center text-sm font-semibold text-teal-800">Explore destinations →</Link>
             </div>
-            {filteredHotels.length === 0 && (
-              <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-                <p className="text-sm leading-6 text-slate-600">No stays match your current filters.</p>
-                <button type="button" onClick={clearFilters} className="mt-3 min-h-11 rounded-md px-3 text-sm font-medium text-teal-700 hover:bg-teal-50">Clear filters</button>
-              </div>
-            )}
-            <ul className="mt-6 grid gap-4 md:grid-cols-2">
-              {displayedHotels.map((hotel, displayIndex) => (
-                <li
-                  key={`${hotel.property_token ?? hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}-${displayIndex}`}
-                  className="min-w-0"
-                >
-                  <HotelResultCard hotel={hotel} checkoutHref={selectedSearch ? checkoutHref(selectedSearch, hotel) : null} />
-                </li>
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {[
+                { name: "New York City", image: "new-york-city", description: "Iconic sights & skyline nights" },
+                { name: "Tokyo", image: "tokyo-skyline", description: "Neon streets & new discoveries" },
+                { name: "Lake Tahoe", image: "lake-tahoe", description: "Lakeside days & mountain air" },
+                { name: "Paris", image: "paris", description: "Riverside strolls & café mornings" },
+              ].map((destination) => (
+                <Link key={destination.name} href={`/search?destination=${encodeURIComponent(destination.name)}`} className="group relative aspect-[1.1] overflow-hidden rounded-2xl bg-slate-200 sm:aspect-[1.25]">
+                  <Image src={`/images/${destination.image}.jpg`} alt="" fill sizes="(max-width: 1023px) 50vw, 25vw" className="object-cover transition-transform duration-300 group-hover:scale-105" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-4 sm:p-5">
+                    <div><h3 className="text-lg font-semibold text-white">{destination.name}</h3><p className="mt-1 text-xs leading-5 text-white/90">{destination.description}</p></div>
+                    <span aria-hidden="true" className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/70 text-xl text-white sm:flex">→</span>
+                  </div>
+                </Link>
               ))}
-            </ul>
-            {pageError && (
-              <div className="mt-6">
-                <ErrorState
-                  title={pageError.title}
-                  message={pageError.message}
-                  onRetry={pageError.retryable ? loadNextPage : undefined}
-                  isRetrying={isLoadingMore}
-                />
-              </div>
-            )}
-            {results.next_page_token && !pageError && (
-              <div className="mt-6 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => void loadNextPage()}
-                  disabled={isLoadingMore}
-                  aria-busy={isLoadingMore}
-                  className="min-h-11 rounded-md border border-teal-700 px-5 font-medium text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isLoadingMore ? "Loading more stays…" : "Load more stays"}
-                </button>
-              </div>
-            )}
-          </>
+            </div>
+          </section>
         )}
-      </div>
+        <div className="mt-10 border-t border-slate-200 pt-8" aria-live="polite">
+          <h2 className="text-xl font-semibold text-slate-950">Available stays</h2>
+          {status === "idle" && <p className="mt-2 text-sm leading-6 text-slate-600">Enter a destination and dates to find available stays.</p>}
+          {status === "loading" && <SearchResultsSkeleton />}
+          {error && (
+            <div className="mt-4">
+              <ErrorState
+                title={error.title}
+                message={error.message}
+                onRetry={error.retryable ? retrySearch : undefined}
+                isRetrying={status === "loading"}
+              />
+            </div>
+          )}
+          {status === "success" && results?.properties.length === 0 && (
+            <p className="mt-2 text-sm leading-6 text-slate-600">No hotels found for this search. Try a different destination or dates.</p>
+          )}
+          {status === "success" && results && results.properties.length > 0 && (
+            <>
+              <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <p role="status" className="text-sm leading-6 text-slate-600">{filteredHotels.length} of {results.properties.length} loaded stays match for {results.search_query}.</p>
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+                  <HotelFilters values={filters} amenityOptions={amenityOptions} onChange={setFilters} onClear={clearFilters} />
+                  <HotelSortSelector id="hotel-sort" value={sort} onChange={setSort} />
+                </div>
+              </div>
+              {filteredHotels.length === 0 && (
+                <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+                  <p className="text-sm leading-6 text-slate-600">No stays match your current filters.</p>
+                  <button type="button" onClick={clearFilters} className="mt-3 min-h-11 rounded-md px-3 text-sm font-medium text-teal-700 hover:bg-teal-50">Clear filters</button>
+                </div>
+              )}
+              <ul className="mt-6 grid gap-4 md:grid-cols-2">
+                {displayedHotels.map((hotel, displayIndex) => (
+                  <li
+                    key={`${hotel.property_token ?? hotel.name ?? "hotel"}-${results.properties.indexOf(hotel)}-${displayIndex}`}
+                    className="min-w-0"
+                  >
+                    <HotelResultCard hotel={hotel} checkoutHref={selectedSearch ? checkoutHref(selectedSearch, hotel) : null} />
+                  </li>
+                ))}
+              </ul>
+              {pageError && (
+                <div className="mt-6">
+                  <ErrorState
+                    title={pageError.title}
+                    message={pageError.message}
+                    onRetry={pageError.retryable ? loadNextPage : undefined}
+                    isRetrying={isLoadingMore}
+                  />
+                </div>
+              )}
+              {results.next_page_token && !pageError && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => void loadNextPage()}
+                    disabled={isLoadingMore}
+                    aria-busy={isLoadingMore}
+                    className="min-h-11 rounded-md border border-teal-700 px-5 font-medium text-teal-800 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isLoadingMore ? "Loading more stays…" : "Load more stays"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </>
   );
