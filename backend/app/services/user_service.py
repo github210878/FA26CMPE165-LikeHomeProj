@@ -1,7 +1,16 @@
+﻿from decimal import Decimal
+
 from fastapi import Depends, HTTPException
 from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+from decimal import ROUND_FLOOR
+
+from app.models.payment import Payment
+from app.models.reservation import Reservation
+
+from app.config.constants import Constants
 from app.repositories import user_dao
 from app.schemas.user_schema import (
     ChangePasswordRequest,
@@ -14,6 +23,7 @@ from app.schemas.user_schema import (
 from app.utilities.auth import create_access_token, get_current_user_id
 
 PASSWORD_HASHER = PasswordHash.recommended()
+REWARD_POINT_CONVERSION_RATE = Constants.REWARD_POINTS_PER_DOLLAR
 
 
 def register_user(user_info: RegisterUserRequest, db: Session):
@@ -30,6 +40,8 @@ def register_user(user_info: RegisterUserRequest, db: Session):
         full_name=user_info.full_name,
         phone=user_info.phone,
     )
+
+    user_dao.create_user_balance(db=db, user_id=new_user.user_id)
 
     return RegisterUserResponse(
         user_id=new_user.user_id,
@@ -118,13 +130,237 @@ def logout_user(db: Session, user_id: int):
     return {"status": True, "message": "Logged out successfully"}
 
 
-def get_my_reward_points(db: Session, user_id: int = Depends(get_current_user_id)):
-    """Query reward points by the user_id via user_dao"""
+
+def get_my_reward_points(db: Session, user_id: int):
+    """Return the authenticated user's current reward points."""
+
+    user = user_dao.get_user_by_id(
+        db=db,
+        user_id=user_id,
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    return {
+        "status": True,
+        "reward_points": user.reward_points,
+    }
+def get_balance(db: Session, user_id: int = Depends(get_current_user_id)):
+    """Query balance by the user_id via user_dao"""
 
     user = user_dao.get_user_by_id(user_id=user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    user_balance = user_dao.get_user_balance(db=db, user_id=user_id)
+    return {
+        "status": True,
+        "balance": user_balance,
+    }
+
+
+def redeem_reward_points(db: Session, user_id: int, amount: int):
+    """Redeem reward points for a user"""
+
+    if amount <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Amount must be greater than zero",
+        )
+
+    user = user_dao.get_user_by_id(user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.reward_points < amount:
+        raise HTTPException(
+            status_code=400, detail="Insufficient reward points to redeem"
+        )
+
+    converted_amount = Decimal(amount) / Decimal(str(REWARD_POINT_CONVERSION_RATE))
+
+    # Deduct the reward points and update the balance
+    new_reward_points = user.reward_points - amount
+    new_balance = user_dao.get_user_balance(db=db, user_id=user_id) + converted_amount
+
+    user, user_balance = user_dao.update_user_reward_points_and_balance(
+        db=db,
+        user_id=user_id,
+        new_reward_points=new_reward_points,
+        new_balance=new_balance,
+    )
+
+    user_dao.create_redeem_history(
+        db=db, user_id=user_id, reward_points_redeemed=amount
+    )
+    return {
+        "status": True,
+        "message": f"Successfully redeemed {amount} reward points",
+        "new_reward_points": new_reward_points,
+        "new_balance": user_balance.balance,
+    }
+
+
+def get_redeem_history(db: Session, user_id: int):
+    """Get redeem history for a user"""
+
+    user = user_dao.get_user_by_id(user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    redeem_history = user_dao.get_redeem_history(db=db, user_id=user_id)
+    return {
+        "status": True,
+        "redeem_history": redeem_history,
+    }
+
+
+def get_reservation_history(db: Session, user_id: int):
+    """Get reservation history for a user"""
+
+    user = user_dao.get_user_by_id(user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    reservations = user_dao.get_reservation_history(db=db, user_id=user_id)
+    return {
+        "status": True,
+        "reservations": reservations,
+    }
+
+
+def get_payment_history(db: Session, user_id: int):
+    """Get payment history for a user"""
+
+    user = user_dao.get_user_by_id(user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    payments = user_dao.get_payment_history(db=db, user_id=user_id)
+    return {
+        "status": True,
+        "payments": payments,
+    }
+
+
+def get_reward_points_history(db: Session, user_id: int):
+    """Get reward points history for a user"""
+
+    user = user_dao.get_user_by_id(user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    reward_points_history = []
+
+    payment_history = user_dao.get_payment_history(db=db, user_id=user_id)
+
+    for payment in payment_history:
+        if payment.payment_status == "paid":
+            reward_points_history.append(
+                {
+                    "reward_points_change": payment.amount
+                    * Decimal(str(REWARD_POINT_CONVERSION_RATE)),
+                    "type": "earned",
+                    "created_at": payment.created_at,
+                }
+            )
+
+    redeem_history = user_dao.get_redeem_history(db=db, user_id=user_id)
+
+    for redeem in redeem_history:
+        reward_points_history.append(
+            {
+                "reward_points_change": -redeem.reward_points_redeemed,
+                "type": "redeemed",
+                "created_at": redeem.created_at,
+            }
+        )
+
+    # Sort the history by created_at in descending order
+    reward_points_history.sort(key=lambda x: x["created_at"], reverse=True)
+
+    return {
+        "status": True,
+        "reward_points_history": reward_points_history,
+    }
+
+def get_my_reward_history(db: Session, user_id: int):
+    """Return the authenticated user's earned and redeemed reward history."""
+
+    user = user_dao.get_user_by_id(db=db, user_id=user_id)
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    history = []
+
+    # Earned points from paid booking payments belonging to this user.
+    payments = (
+        db.query(Payment)
+        .join(
+            Reservation,
+            Payment.reservation_id == Reservation.reservation_id,
+            )
+        .filter(
+            Reservation.user_id == user_id,
+            Payment.payment_type == "booking",
+            Payment.payment_status == "paid",
+            )
+        .all()
+    )
+
+    for payment in payments:
+        # Booking payments currently award one point
+        # per completed dollar, not 100 points per dollar.
+        points = int(
+            Decimal(str(payment.amount)).to_integral_value(
+                rounding=ROUND_FLOOR
+            )
+        )
+
+        history.append({
+            "transaction_id": payment.payment_id,
+            "points_change": points,
+            "transaction_type": "earned",
+            "created_at": payment.created_at,
+        })
+
+    # Redeemed points from Jesse's existing database table.
+    redemptions = user_dao.get_redeem_history(
+        db=db,
+        user_id=user_id,
+    ) or []
+
+    for redemption in redemptions:
+        created_at = redemption.created_at
+
+        # The existing SQLAlchemy redemption model stores
+        # timestamps as strings, while the SQL table uses TIMESTAMP.
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+
+        history.append({
+            # Negative IDs distinguish redemption entries
+            # from payment IDs without creating another ledger.
+            "transaction_id": -redemption.redeem_id,
+            "points_change": -redemption.reward_points_redeemed,
+            "transaction_type": "redeemed",
+            "created_at": created_at,
+        })
+
+    history.sort(
+        key=lambda item: item["created_at"],
+        reverse=True,
+    )
+
     return {
         "status": True,
         "reward_points": user.reward_points,
+        "history": history,
     }

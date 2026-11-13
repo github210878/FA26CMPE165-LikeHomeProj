@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api";
 import type { ReservationChangeQuoteResponse } from "@/lib/api-types";
 import { getReservationChangeQuote } from "@/lib/bookings";
 
-type Props = { reservationId: number; checkInDate: string; checkOutDate: string };
+type Props = { reservationId: number; checkInDate: string; checkOutDate: string; onQuoteReady?: (quote: ReservationChangeQuoteResponse | null) => void; };
 type Fields = { check_in_date: string; check_out_date: string; q: string; adults: string; children: string };
 type ReviewState =
   | { kind: "idle" | "loading" | "expired" | "unauthorized" }
@@ -45,7 +45,7 @@ function quoteError(error: unknown): { kind: "error"; message: string; retryable
   return { kind: "error", message: invalidQuoteMessage, retryable: true };
 }
 
-function ChangeReview({ reservationId, checkInDate, checkOutDate }: Props) {
+function ChangeReview({ reservationId, checkInDate, checkOutDate, onQuoteReady }: Props) {
   const router = useRouter();
   const { invalidateSession } = useAuth();
   const [fields, setFields] = useState<Fields>(() => ({
@@ -56,6 +56,11 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate }: Props) {
   const active = useRef(false);
   const pending = useRef(false);
   const generation = useRef(0);
+  const onQuoteReadyRef = useRef(onQuoteReady);
+
+  useEffect(() => {
+    onQuoteReadyRef.current = onQuoteReady;
+  }, [onQuoteReady]);
 
   useEffect(() => {
     active.current = true;
@@ -66,13 +71,25 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate }: Props) {
     if (state.kind !== "success") return;
     const review = state.review;
     let timer: ReturnType<typeof setTimeout> | undefined;
+
     function checkExpiration() {
       clearTimeout(timer);
+
       const remaining = Date.parse(review.expires_at) - Date.now();
+
       if (remaining <= 0) {
-        setState((current) => current.kind === "success" && current.review === review ? { kind: "expired" } : current);
+        setState((current) =>
+            current.kind === "success" && current.review === review
+                ? { kind: "expired" }
+                : current
+        );
+
+        onQuoteReadyRef.current?.(null);
       } else {
-        timer = setTimeout(checkExpiration, Math.min(remaining, 2147483647));
+        timer = setTimeout(
+            checkExpiration,
+            Math.min(remaining, 2147483647)
+        );
       }
     }
     checkExpiration();
@@ -84,11 +101,11 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate }: Props) {
       document.removeEventListener("visibilitychange", checkExpiration);
     };
   }, [state]);
-
   function edit(field: keyof Fields, value: string) {
     if (pending.current) return;
     setFields((current) => ({ ...current, [field]: value }));
     setState({ kind: "idle" });
+    onQuoteReady?.(null);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -97,6 +114,7 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate }: Props) {
     pending.current = true;
     const requestGeneration = ++generation.current;
     setState({ kind: "loading" });
+    onQuoteReady?.(null);
     try {
       const review = await getReservationChangeQuote(reservationId, {
         check_in_date: fields.check_in_date, check_out_date: fields.check_out_date, q: fields.q,
@@ -106,8 +124,12 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate }: Props) {
       });
       if (!active.current || generation.current !== requestGeneration) return;
       const expiration = Date.parse(review.expires_at);
-      setState(Number.isFinite(expiration) && expiration > Date.now()
-        ? { kind: "success", review } : { kind: "error", message: invalidQuoteMessage, retryable: true });
+      const valid = Number.isFinite(expiration) && expiration > Date.now();
+      setState(valid
+          ? { kind: "success", review }
+          : { kind: "error", message: invalidQuoteMessage, retryable: true });
+
+      onQuoteReady?.(valid ? review : null);
     } catch (error: unknown) {
       if (!active.current || generation.current !== requestGeneration) return;
       if (error instanceof ApiError && error.status === 401) {

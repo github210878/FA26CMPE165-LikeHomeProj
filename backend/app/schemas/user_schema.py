@@ -1,5 +1,5 @@
 # app/schemas/user.py
-
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -42,3 +42,15 @@ class DeleteUserRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     password: str = Field(max_length=20)
+
+class RewardHistoryItem(BaseModel):
+    transaction_id: int
+    points_change: int
+    transaction_type: str
+    created_at: datetime
+
+
+class RewardHistoryResponse(BaseModel):
+    status: bool = True
+    reward_points: int
+    history: list[RewardHistoryItem]

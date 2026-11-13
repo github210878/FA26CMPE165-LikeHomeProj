@@ -1,6 +1,8 @@
 from uuid import uuid4
 
+from fastapi import HTTPException
 from pwdlib import PasswordHash
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.hotel import Hotel

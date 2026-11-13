@@ -260,6 +260,18 @@ def lock_owned_reservation(db: Session, reservation_id: int, user_id: int):
     )
 
 
+def get_owned_reservation(db: Session, reservation_id: int, user_id: int):
+    """Read an owned reservation without locking it for a later write."""
+    return (
+        db.query(Reservation)
+        .filter(
+            Reservation.reservation_id == reservation_id,
+            Reservation.user_id == user_id,
+        )
+        .first()
+    )
+
+
 def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
     """Lock the complete history in ID order; never choose among duplicate charges."""
     payments = (
@@ -330,5 +342,42 @@ def add_reward_points_to_user(db: Session, user: User, points: int):
     """
     if user is None or user.status != "active":
         raise HTTPException(
-            status_code=500, detail="Failed to add reward points"
-        ) from exec
+            status_code=401,
+            detail="User is inactive or does not exist",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    balance = user.reward_points
+    if (
+        type(points) is not int
+        or points < 0
+        or type(balance) is not int
+        or balance < 0
+        or balance > MAX_REWARD_POINTS
+        or points > MAX_REWARD_POINTS - balance
+    ):
+        raise HTTPException(status_code=409, detail="Reward balance is unsupported")
+    user.reward_points = balance + points
+    db.flush()
+
+
+def check_if_user_booked_by_date_range_excluding(
+    db: Session,
+    user_id: int,
+    check_in_date,
+    check_out_date,
+    excluded_reservation_id: int,
+) -> bool:
+    """Check date overlap while excluding the reservation being modified."""
+    overlapping_reservation = (
+        db.query(Reservation.reservation_id)
+        .filter(
+            Reservation.user_id == user_id,
+            Reservation.reservation_id != excluded_reservation_id,
+            Reservation.status == "confirmed",
+            Reservation.check_in_date < check_out_date,
+            Reservation.check_out_date > check_in_date,
+        )
+        .first()
+    )
+
+    return overlapping_reservation is not None

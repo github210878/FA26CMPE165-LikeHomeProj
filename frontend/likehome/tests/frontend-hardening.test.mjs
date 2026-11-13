@@ -22,8 +22,8 @@ afterEach(() => {
 
 const futureSearch = {
   destination: "San Jose hotels",
-  checkIn: "2026-11-01",
-  checkOut: "2026-11-03",
+  checkIn: "2026-12-01",
+  checkOut: "2026-12-03",
   guests: "2",
 };
 
@@ -54,7 +54,7 @@ test("recent-search parsing ignores malformed entries, deduplicates, and caps hi
     futureSearch,
     { ...futureSearch, destination: " SAN JOSE HOTELS " },
     { ...futureSearch, guests: "not-a-number" },
-    { ...futureSearch, checkOut: "2026-11-01" },
+    { ...futureSearch, checkOut: "2026-12-01" },
     ...Array.from({ length: 8 }, (_, index) => ({
       destination: `Destination ${index}`,
       checkIn: "2026-12-01",
@@ -120,7 +120,7 @@ test("hotel search parameters encode user input and preserve fresh pagination co
   );
 
   assert.equal(params.get("q"), "San Jose & family hotels");
-  assert.equal(params.get("check_in_date"), "2026-11-01");
+  assert.equal(params.get("check_in_date"), "2026-12-01");
   assert.equal(params.get("adults"), "2");
   assert.equal(params.get("no_cache"), "true");
   assert.equal(params.get("next_page_token"), "token+/=?");

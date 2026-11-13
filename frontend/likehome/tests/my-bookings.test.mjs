@@ -66,6 +66,25 @@ test("an empty booking list is a valid response", async () => {
   assert.deepEqual(await getMyBookings(), []);
 });
 
+test("booking history preserves upcoming, changed-date, cancelled, and past stays", async () => {
+  mockSessionStorage();
+  saveAccessToken("issued-token");
+  const history = [
+    { ...booking, reservation_id: 21, check_in_date: "2026-11-10T00:00:00", check_out_date: "2026-11-12T00:00:00", status: "confirmed" },
+    { ...booking, reservation_id: 22, check_in_date: "2026-12-01T00:00:00", check_out_date: "2026-12-04T00:00:00", status: "confirmed" },
+    { ...booking, reservation_id: 23, check_in_date: "2026-10-01T00:00:00", check_out_date: "2026-10-03T00:00:00", status: "cancelled" },
+    { ...booking, reservation_id: 24, check_in_date: "2026-09-01T00:00:00", check_out_date: "2026-09-03T00:00:00", status: "completed" },
+  ];
+  globalThis.fetch = async () => new Response(JSON.stringify(history));
+
+  const result = await getMyBookings();
+  assert.deepEqual(result.map(({ reservation_id, check_in_date, check_out_date, status }) => ({
+    reservation_id, check_in_date, check_out_date, status,
+  })), history.map(({ reservation_id, check_in_date, check_out_date, status }) => ({
+    reservation_id, check_in_date, check_out_date, status,
+  })));
+});
+
 test("missing token rejects before requesting bookings", async () => {
   mockSessionStorage();
   let called = false;

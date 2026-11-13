@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import MyBookingsExperience from "@/components/MyBookingsExperience";
 
 export const metadata: Metadata = {
@@ -12,6 +13,7 @@ export default function MyBookingsPage() {
       <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
         My bookings
       </h1>
+      <Link href="/rewardPage"><button>My Points</button> </Link>
 
       <MyBookingsExperience />
     </section>

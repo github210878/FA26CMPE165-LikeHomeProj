@@ -6,6 +6,7 @@ from app.schemas.booking_schema import (
     BookingListItem,
     BookingRequest,
     BookingResponse,
+    CancellationChargeResponse,
     CancellationResponse,
     PaymentResponse,
 )
@@ -78,6 +79,22 @@ def create_booking(
     Otherwise, it creates a new hotel, room type, reservation, and payment record in the database.
     """
     return booking_service.create_booking(db, booking_info, user_id)
+
+
+@router.post("/modify/{reservation_id}", response_model=BookingResponse)
+def modify_booking(
+    reservation_id: int,
+    booking_info: BookingRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """
+    Modify an existing booking for the current user.
+    This function checks if the user has a booking with the given reservation ID.
+    If the user does not have a booking with the given reservation ID, it raises an HTTPException.
+    Otherwise, it modifies the existing hotel, room type, reservation, and payment record in the database.
+    """
+    return booking_service.modify_booking(db, reservation_id, booking_info, user_id)
 
 
 @router.get("/get-all-bookings", response_model=list[BookingListItem])
@@ -153,6 +170,19 @@ def cancel_booking(
     return booking_service.cancel_booking(db, reservation_id, user_id)
 
 
+@router.get(
+    "/{reservation_id}/cancellation-charge",
+    response_model=CancellationChargeResponse,
+)
+def get_cancellation_charge(
+    reservation_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Preview an owned reservation's cancellation charge without changing it."""
+    return booking_service.get_cancellation_charge(db, reservation_id, user_id)
+
+
 @router.post("/pay-cancellation-fee/{payment_id}", response_model=PaymentResponse)
 def pay_cancellation_fee(
     payment_id: int,
@@ -173,4 +203,16 @@ def pay_with_reward_points(
 ):
     return booking_service.pay_with_reward_points(
         db=db, user_id=user_id, payment_id=payment_id
+    )
+
+
+@router.post("/apply-balance/{payment_id}/{amount}")
+def apply_balance(
+    payment_id: int,
+    amount: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return booking_service.apply_balance(
+        db=db, user_id=user_id, payment_id=payment_id, amount=amount
     )
