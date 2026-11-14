@@ -37,10 +37,15 @@ export function postJson<TResponse, TRequest>(path: string, body: TRequest): Pro
   });
 }
 
-export function getAuthorizedJson<T>(path: string, accessToken: string): Promise<T> {
+export function getAuthorizedJson<T>(
+  path: string,
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<T> {
   return requestJson<T>(path, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
+    signal,
   });
 }
 

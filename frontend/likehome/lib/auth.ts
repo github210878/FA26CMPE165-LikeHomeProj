@@ -17,7 +17,11 @@ export async function loginUser(credentials: LoginUserRequest): Promise<LoginUse
 }
 
 export async function getCurrentUser(accessToken: string): Promise<CurrentUserResponse> {
-  const response = await getAuthorizedJson<CurrentUserResponse>("/users/me", accessToken);
+  const response = await getAuthorizedJson<CurrentUserResponse>(
+    "/users/me",
+    accessToken,
+    AbortSignal.timeout(10_000),
+  );
   if (!response || !Number.isInteger(response.user_id) || response.user_id <= 0 ||
     typeof response.message !== "string") {
     throw new Error("Session verification returned an unexpected response");

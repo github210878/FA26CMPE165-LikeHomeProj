@@ -117,6 +117,19 @@ export type CurrentUserResponse = {
   user_id: number;
 };
 
+export type RewardHistoryItem = {
+  transaction_id: number;
+  points_change: number;
+  transaction_type: "earned" | "redeemed";
+  created_at: string;
+};
+
+export type RewardHistoryResponse = {
+  status: boolean;
+  reward_points: number;
+  history: RewardHistoryItem[];
+};
+
 export type LogoutUserResponse = {
   status: boolean;
   message: string;
