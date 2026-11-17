@@ -65,8 +65,8 @@ test("cent subtraction avoids floating point subtraction artifacts", () => {
 // checkout state; mount effects are disabled so these tests focus on presentation
 // and the actual booking handlers, with every HTTP response mocked.
 const require = createRequire(import.meta.url);
-function checkoutHarness(initialQuote) {
-  const slots = ["ready", initialQuote, "", "", { ...guest }, {}];
+function checkoutHarness(initialQuote, rewardBalance = { kind: "ready", points: 500 }) {
+  const slots = ["ready", initialQuote, "", "", { ...guest }, {}, rewardBalance, false];
   const navigation = [];
   let cursor = 0;
   const hooks = {
@@ -93,6 +93,7 @@ function checkoutHarness(initialQuote) {
     "@/components/LoadingSkeletons": { CheckoutSkeleton: () => null, SessionLoadingSkeleton: () => null },
     "@/lib/api": { ApiError },
     "@/lib/payment": { paymentHref },
+    "@/lib/rewards": { getMyRewardHistory: async () => ({ reward_points: 500 }) },
     "@/lib/checkout": { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote },
     "@/lib/checkout-pricing": { checkoutPriceBreakdown },
     "@/lib/guest-information": { normalizedGuestInformation, validateGuestInformation },
@@ -158,6 +159,31 @@ test("checkout renders currency-safe semantic breakdown and preserves nightly, n
   assert.match(view.html, /The current price has changed since your search/);
   harness.render();
   assert.equal(calls, 0);
+});
+
+test("reward redemption control shows balance and opt-in without changing the quote", () => {
+  const harness = checkoutHarness(quote);
+  const initial = harness.render();
+  const redemptionControl = initial.nodes.find((node) => node.type === "input" && node.props.type === "checkbox");
+  assert.ok(redemptionControl);
+  assert.equal(redemptionControl.props.checked, false);
+  assert.equal(redemptionControl.props.disabled, false);
+  assert.match(initial.html, /Available balance: <span class="font-semibold tabular-nums">500 points/);
+  assert.match(initial.html, /Stay eligibility and point deduction are not yet connected/);
+  assert.equal(initial.rows.get("Final booking total"), "$226.80 USD");
+
+  redemptionControl.props.onChange({ target: { checked: true } });
+  const selected = harness.render();
+  const selectedControl = selected.nodes.find((node) => node.type === "input" && node.props.type === "checkbox");
+  assert.equal(selectedControl.props.checked, true);
+  assert.equal(selected.rows.get("Final booking total"), "$226.80 USD");
+});
+
+test("reward redemption control is disabled for a zero-point balance", () => {
+  const view = checkoutHarness(quote, { kind: "ready", points: 0 }).render();
+  const redemptionControl = view.nodes.find((node) => node.type === "input" && node.props.type === "checkbox");
+  assert.equal(redemptionControl.props.disabled, true);
+  assert.match(view.html, /There are no points available to request/);
 });
 
 test("optional reference and zero fee/tax render truthfully without replacing the final authoritative amount", () => {
