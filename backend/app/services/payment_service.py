@@ -51,9 +51,10 @@ class PaymentService:
         if payment.payment_status not in ("pending", "paid"):
             raise HTTPException(status_code=409, detail="Payment cannot be completed")
 
-        points = self.reward_points_for(payment.amount)
         if payment.payment_status == "paid":
             return False
+
+        points = self.reward_points_for(payment.amount)
         if reservation.status != "confirmed":
             raise HTTPException(status_code=409, detail="Payment cannot be completed")
         self.provider.authorize(payment)

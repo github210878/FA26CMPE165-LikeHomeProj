@@ -200,6 +200,23 @@ def test_historical_paid_rows_get_no_automatic_catchup(payment_app, monkeypatch,
     assert persisted_state(engine) == before
 
 
+def test_paid_payment_retry_does_not_revalidate_historical_amount(payment_app, monkeypatch):
+    client, engine = payment_app
+    with Session(engine) as db:
+        db.get(Payment, 1).payment_status = "paid"
+        db.commit()
+
+    def forbidden_amount_check(*_args, **_kwargs):
+        pytest.fail("Paid payment retries must not calculate a historical reward")
+
+    monkeypatch.setattr(
+        booking_service.payment_service,
+        "reward_points_for",
+        forbidden_amount_check,
+    )
+    assert client.post("/bookings/pay/1", headers=headers()).status_code == 200
+
+
 @pytest.mark.parametrize("history", ["duplicate-pending", "duplicate-paid", "duplicate-failed", "cancellation-only", "extra-cancellation"])
 def test_multiple_or_malformed_booking_payments_fail_closed(payment_app, history):
     client, engine = payment_app
