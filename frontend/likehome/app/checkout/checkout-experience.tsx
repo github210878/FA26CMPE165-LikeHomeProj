@@ -7,6 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
 import type { HotelRevalidationResponse } from "@/lib/api-types";
 import { paymentHref } from "@/lib/payment";
+import { getMyRewardHistory } from "@/lib/rewards";
 import { createBookingSubmissionGuard, revalidateHotel, submitAcceptedQuote } from "@/lib/checkout";
 import type { CheckoutSelection } from "@/lib/checkout-selection";
 import { checkoutPriceBreakdown } from "@/lib/checkout-pricing";
@@ -15,8 +16,13 @@ import { CheckoutSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSk
 
 type Phase = "loading" | "ready" | "unavailable" | "provider-error" | "error" |
   "submitting" | "conflict" | "overlap" | "booking-error" | "success";
+type RewardBalanceState =
+  | { kind: "loading" }
+  | { kind: "ready"; points: number }
+  | { kind: "error" };
 
 const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const pointsFormat = new Intl.NumberFormat("en-US");
 
 export default function CheckoutExperience({ selection }: { selection: CheckoutSelection | null }) {
   const router = useRouter();
@@ -27,6 +33,8 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   const [bookingError, setBookingError] = useState("");
   const [guest, setGuest] = useState<GuestInformation>({ guest_full_name: "", guest_email: "" });
   const [guestErrors, setGuestErrors] = useState<GuestInformationErrors>({});
+  const [rewardBalance, setRewardBalance] = useState<RewardBalanceState>({ kind: "loading" });
+  const [redemptionRequested, setRedemptionRequested] = useState(false);
   const initialRequest = useRef<{ key: string; promise: Promise<HotelRevalidationResponse> } | null>(null);
   const submissionGuard = useRef(createBookingSubmissionGuard());
   const refreshing = useRef(false);
@@ -35,6 +43,23 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
   useEffect(() => {
     if (phase === "overlap") overlapHeading.current?.focus();
   }, [phase]);
+
+  useEffect(() => {
+    if (sessionStatus !== "authenticated") return;
+    let active = true;
+    getMyRewardHistory().then((rewards) => {
+      if (active) setRewardBalance({ kind: "ready", points: rewards.reward_points });
+    }).catch((error: unknown) => {
+      if (!active) return;
+      if (error instanceof ApiError && error.status === 401) {
+        invalidateSession();
+        router.replace("/login");
+        return;
+      }
+      setRewardBalance({ kind: "error" });
+    });
+    return () => { active = false; };
+  }, [sessionStatus, invalidateSession, router]);
 
   const handleQuoteFailure = useCallback((error: unknown) => {
     setQuote(null);
@@ -204,6 +229,26 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
         {guestErrors.guest_email && <p id="guest-email-error" className="mt-1 text-sm text-red-700">{guestErrors.guest_email}</p>}
       </div>
     </div>
+    <section aria-labelledby="reward-redemption-heading" className="border-y border-slate-200 py-5">
+      <h2 id="reward-redemption-heading" className="text-lg font-semibold text-slate-950">Reward points</h2>
+      {rewardBalance.kind === "loading" && <p role="status" className="mt-2 text-sm text-slate-600">Loading your reward point balance…</p>}
+      {rewardBalance.kind === "error" && <p role="status" className="mt-2 text-sm text-slate-600">Your reward point balance is unavailable. You can continue booking without requesting redemption.</p>}
+      {rewardBalance.kind === "ready" && <>
+        <p className="mt-2 text-sm text-slate-700">Available balance: <span className="font-semibold tabular-nums">{pointsFormat.format(rewardBalance.points)} points</span></p>
+        <label className="mt-3 flex items-start gap-3 text-sm leading-6 text-slate-700">
+          <input
+            type="checkbox"
+            checked={redemptionRequested}
+            disabled={rewardBalance.points === 0 || phase !== "ready"}
+            onChange={(event) => setRedemptionRequested(event.target.checked)}
+            className="mt-1 size-4 accent-teal-700"
+          />
+          <span>Request reward redemption for this stay</span>
+        </label>
+        {rewardBalance.points === 0 && <p className="mt-2 text-sm text-slate-600">There are no points available to request.</p>}
+      </>}
+      <p className="mt-2 text-sm text-slate-600">Stay eligibility and point deduction are not yet connected to checkout, so this selection does not change the quoted total.</p>
+    </section>
     {quote.price_changed === true && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
       The current price has changed since your search. Review the updated quote below.
     </p>}
