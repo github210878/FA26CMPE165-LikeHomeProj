@@ -1,4 +1,4 @@
-from tokenize import String
+from datetime import datetime
 
 from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -17,4 +17,14 @@ class RedeemHistory(Base):
 
     reward_points_redeemed: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    created_at: Mapped[str] = mapped_column(String(100), nullable=False)
+    redemption_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="wallet"
+    )
+
+    payment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    reservation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[str] = mapped_column(
+        String(100), nullable=False, default=lambda: datetime.now().isoformat()
+    )

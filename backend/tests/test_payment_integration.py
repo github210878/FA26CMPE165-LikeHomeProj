@@ -6,7 +6,7 @@ from threading import Barrier, Lock
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 from app.config.database import Base, get_db
 from app.models.hotel import Hotel
 from app.models.payment import Payment
+from app.models.redeem_history import RedeemHistory
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.models.user import User
@@ -88,6 +89,119 @@ def test_owner_pays_persisted_amount_once_and_reads_typed_details(payment_app):
         assert payments[0].amount == 226.8
         assert payments[0].payment_status == "paid"
         assert db.get(User, 7).reward_points == 226
+
+
+@pytest.mark.parametrize("reward_points", [22680, 22700])
+def test_owner_can_pay_entire_booking_with_exact_reward_amount(payment_app, reward_points):
+    client, engine = payment_app
+    with Session(engine) as db:
+        db.get(User, 7).reward_points = reward_points
+        db.commit()
+
+    response = client.get("/bookings/pay-with-reward-points/1", headers=headers())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "payment_id": 1,
+        "reservation_id": 1,
+        "amount": 226.8,
+        "payment_type": "booking",
+        "payment_status": "paid",
+    }
+    with Session(engine) as db:
+        assert db.get(User, 7).reward_points == reward_points - 22680
+        assert db.get(Payment, 1).payment_status == "paid"
+        history = db.query(RedeemHistory).one()
+        assert history.reward_points_redeemed == 22680
+        assert history.redemption_type == "free_stay"
+        assert history.payment_id == 1
+        assert history.reservation_id == 1
+
+
+def test_reward_payment_rejects_insufficient_points_without_writes(payment_app):
+    client, engine = payment_app
+    with Session(engine) as db:
+        db.get(User, 7).reward_points = 22679
+        db.commit()
+
+    response = client.get("/bookings/pay-with-reward-points/1", headers=headers())
+
+    assert response.status_code == 409
+    with Session(engine) as db:
+        assert db.get(User, 7).reward_points == 22679
+        assert db.get(Payment, 1).payment_status == "pending"
+        assert db.query(RedeemHistory).count() == 0
+
+
+def test_reward_payment_retry_does_not_deduct_or_award_again(payment_app):
+    client, engine = payment_app
+    with Session(engine) as db:
+        db.get(User, 7).reward_points = 22680
+        db.commit()
+
+    first = client.get("/bookings/pay-with-reward-points/1", headers=headers())
+    second = client.get("/bookings/pay-with-reward-points/1", headers=headers())
+
+    assert first.status_code == second.status_code == 200
+    with Session(engine) as db:
+        assert db.get(User, 7).reward_points == 0
+        assert db.query(RedeemHistory).count() == 1
+
+
+@pytest.mark.parametrize("reservation_status", ["cancelled", "completed"])
+def test_reward_payment_requires_confirmed_reservation(payment_app, reservation_status):
+    client, engine = payment_app
+    with Session(engine) as db:
+        db.get(User, 7).reward_points = 22680
+        db.get(Reservation, 1).status = reservation_status
+        db.commit()
+
+    response = client.get("/bookings/pay-with-reward-points/1", headers=headers())
+
+    assert response.status_code == 409
+    with Session(engine) as db:
+        assert db.get(User, 7).reward_points == 22680
+        assert db.get(Payment, 1).payment_status == "pending"
+        assert db.query(RedeemHistory).count() == 0
+
+
+def test_nonowner_cannot_redeem_points(payment_app):
+    client, engine = payment_app
+    with Session(engine) as db:
+        db.get(User, 8).reward_points = 22680
+        db.commit()
+
+    response = client.get(
+        "/bookings/pay-with-reward-points/1", headers=headers(subject_id=8)
+    )
+
+    assert response.status_code == 404
+    with Session(engine) as db:
+        assert db.get(User, 7).reward_points == 0
+        assert db.get(User, 8).reward_points == 22680
+        assert db.get(Payment, 1).payment_status == "pending"
+
+
+def test_reward_payment_rolls_back_points_and_history_when_commit_fails(
+    payment_app, monkeypatch
+):
+    _, engine = payment_app
+    with Session(engine) as db:
+        db.get(User, 7).reward_points = 22680
+        db.commit()
+
+        def fail_commit():
+            raise RuntimeError("synthetic commit failure")
+
+        monkeypatch.setattr(db, "commit", fail_commit)
+        with pytest.raises(HTTPException) as error:
+            booking_service.pay_with_reward_points(db, payment_id=1, user_id=7)
+        assert error.value.status_code == 500
+
+    with Session(engine) as db:
+        assert db.get(User, 7).reward_points == 22680
+        assert db.get(Payment, 1).payment_status == "pending"
+        assert db.query(RedeemHistory).count() == 0
 
 
 def test_nonowner_partner_and_missing_payment_cannot_read_or_pay(payment_app):
