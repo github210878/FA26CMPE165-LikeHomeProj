@@ -340,16 +340,22 @@ def pay_cancellation_fee(db: Session, payment_id: int, user_id: int) -> PaymentR
 def pay_with_reward_points(
     db: Session, payment_id: int, user_id: int
 ) -> PaymentResponse:
-    """User reward points to pay a payment"""
+    """Pay an owned booking in full with reward points atomically."""
     try:
         reservation_id = booking_dao.get_owned_payment_reservation_id(
             db, payment_id, user_id
         )
         if reservation_id is None:
             raise HTTPException(status_code=404, detail="Payment not found")
-        # Authentication and ownership reads may have opened a REPEATABLE READ
-        # snapshot. Lock the reservation first, matching cancellation order.
+        # Refresh the snapshot, then serialize user -> reservation -> payment.
         db.rollback()
+        user = booking_dao.lock_active_user_for_payment(db, user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="User is inactive or does not exist",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         reservation = booking_dao.lock_owned_reservation(db, reservation_id, user_id)
         if reservation is None:
             raise HTTPException(status_code=404, detail="Payment not found")
@@ -365,18 +371,38 @@ def pay_with_reward_points(
                 raise HTTPException(
                     status_code=409, detail="Payment cannot be completed"
                 )
-            user = user_dao.get_user_by_id(user_id=user_id)
-            if user.reward_points * reward_points_per_dollor < payment.amount:
+            try:
+                amount = Decimal(str(payment.amount))
+            except (InvalidOperation, ValueError):
+                raise HTTPException(
+                    status_code=409, detail="Payment amount is unsupported"
+                ) from None
+            if (
+                not amount.is_finite()
+                or amount <= 0
+                or amount > MAX_MONEY
+                or amount != _money(amount)
+            ):
+                raise HTTPException(
+                    status_code=409, detail="Payment amount is unsupported"
+                )
+            required_points = int(amount * Decimal(str(reward_points_per_dollor)))
+            if type(user.reward_points) is not int or user.reward_points < required_points:
                 raise HTTPException(status_code=409, detail="Not enough reward points")
-            user_dao.decrease_reward_points(
-                db=db, user_id=user_id, amount=payment.amount * reward_points_per_dollor
+            user.reward_points -= required_points
+            db.flush()
+            user_dao.create_redeem_history(
+                db=db,
+                user_id=user_id,
+                reward_points_redeemed=required_points,
+                redemption_type="free_stay",
+                payment_id=payment.payment_id,
+                reservation_id=reservation.reservation_id,
+                commit=False,
             )
             payment.payment_status = "paid"
             result = PaymentResponse(**booking_dao.payment_result(payment))
             db.commit()
-            booking_dao.add_reward_points_to_user(
-                db, user_id, points=payment.amount
-            )  # Add reward points for the booking payment
             return result
         return PaymentResponse(**booking_dao.payment_result(payment))
     except HTTPException:

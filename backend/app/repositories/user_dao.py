@@ -220,17 +220,31 @@ def get_payment_history(db: Session, user_id: int):
     return payments
 
 
-def create_redeem_history(db: Session, user_id: int, reward_points_redeemed: int):
+def create_redeem_history(
+    db: Session,
+    user_id: int,
+    reward_points_redeemed: int,
+    redemption_type: str = "wallet",
+    payment_id: int | None = None,
+    reservation_id: int | None = None,
+    commit: bool = True,
+):
     """Create a redeem history entry for a user"""
 
     redeem_history = RedeemHistory(
         user_id=user_id,
         reward_points_redeemed=reward_points_redeemed,
+        redemption_type=redemption_type,
+        payment_id=payment_id,
+        reservation_id=reservation_id,
     )
 
     db.add(redeem_history)
-    db.commit()
-    db.refresh(redeem_history)
+    if commit:
+        db.commit()
+        db.refresh(redeem_history)
+    else:
+        db.flush()
 
     return redeem_history
 
