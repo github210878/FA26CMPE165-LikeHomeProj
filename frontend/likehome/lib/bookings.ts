@@ -65,6 +65,18 @@ export async function payBookingPayment(paymentId: number): Promise<PaymentRespo
   return response;
 }
 
+export async function payBookingPaymentWithRewards(paymentId: number): Promise<PaymentResponse> {
+  if (!Number.isSafeInteger(paymentId) || paymentId <= 0) throw new Error("Invalid payment ID");
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+  const response = await getAuthorizedJson<unknown>(`/bookings/pay-with-reward-points/${paymentId}`, token);
+  if (!isPaymentResponse(response) || response.payment_id !== paymentId ||
+      response.payment_type !== "booking" || response.payment_status !== "paid") {
+    throw new Error("Reward payment returned an unexpected response");
+  }
+  return response;
+}
+
 export async function createBooking(request: BookingRequest): Promise<BookingResponse> {
   const token = getAccessToken();
   if (!token) throw new ApiError(401);

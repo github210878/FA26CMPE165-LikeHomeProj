@@ -10,6 +10,7 @@ type PaymentFormProps = {
   paymentError: string;
   onSubmit: () => void;
   onRefresh: () => void;
+  redemptionRequested?: boolean;
 };
 
 export default function PaymentForm({
@@ -18,6 +19,7 @@ export default function PaymentForm({
   paymentError,
   onSubmit,
   onRefresh,
+  redemptionRequested,
 }: PaymentFormProps) {
   const [confirmed, setConfirmed] = useState(false);
 
@@ -51,13 +53,27 @@ export default function PaymentForm({
     <form onSubmit={handleSubmit} className="mt-6 space-y-5">
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-slate-950">Payment method</legend>
-        <label className="flex min-h-12 items-center gap-3 rounded-md border border-teal-700 bg-teal-50 px-4 text-sm font-medium text-slate-900">
-          <input type="radio" name="payment-method" value="demo" checked readOnly />
-          LikeHome demo payment
-        </label>
-        <p className="text-sm leading-6 text-slate-600">
-          This project records an internal demo payment. No card details are collected and no card or bank is charged.
-        </p>
+        {redemptionRequested ? (
+          <>
+            <label className="flex min-h-12 items-center gap-3 rounded-md border border-teal-700 bg-teal-50 px-4 text-sm font-medium text-slate-900">
+              <input type="radio" name="payment-method" value="rewards" checked readOnly />
+              Reward points
+            </label>
+            <p className="text-sm leading-6 text-slate-600">
+              Confirming pays this stay in full with reward points and creates a redemption transaction. The full payment amount must be covered by your available balance.
+            </p>
+          </>
+        ) : (
+          <>
+            <label className="flex min-h-12 items-center gap-3 rounded-md border border-teal-700 bg-teal-50 px-4 text-sm font-medium text-slate-900">
+              <input type="radio" name="payment-method" value="demo" checked readOnly />
+              LikeHome demo payment
+            </label>
+            <p className="text-sm leading-6 text-slate-600">
+              This project records an internal demo payment. No card details are collected and no card or bank is charged.
+            </p>
+          </>
+        )}
       </fieldset>
 
       <label className="flex items-start gap-3 text-sm leading-6 text-slate-700">
@@ -68,7 +84,9 @@ export default function PaymentForm({
           onChange={(event) => setConfirmed(event.target.checked)}
           className="mt-1 size-4 accent-teal-700"
         />
-        <span>I understand this is a demo payment and confirm the amount shown above.</span>
+        <span>{redemptionRequested
+          ? "I understand this stay will be paid in full with reward points and confirm the amount shown above."
+          : "I understand this is a demo payment and confirm the amount shown above."}</span>
       </label>
 
       {paymentError && (
@@ -93,6 +111,12 @@ export default function PaymentForm({
       >
         {submitting ? "Recording payment…" : "Confirm demo payment"}
       </button>
+
+      {redemptionRequested && (
+        <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <p>A reward redemption has been requested for this payment.</p>
+        </div>
+      )}
     </form>
   );
 }

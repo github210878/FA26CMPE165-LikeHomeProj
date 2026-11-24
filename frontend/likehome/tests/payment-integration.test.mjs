@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
 import { ApiError } from "../lib/api.ts";
-import { getMyPayments, getPaymentDetails, payBookingPayment } from "../lib/bookings.ts";
+import { getMyPayments, getPaymentDetails, payBookingPayment, payBookingPaymentWithRewards } from "../lib/bookings.ts";
 import { createBookingSubmissionGuard } from "../lib/checkout.ts";
 import { bookingPaymentForReservation, paymentHref } from "../lib/payment.ts";
 import { saveAccessToken } from "../lib/token-storage.ts";
@@ -90,4 +90,22 @@ test("double submission guard and malformed payment responses fail safely", asyn
   globalThis.fetch = async () => new Response("private failure", { status: 409 });
   await assert.rejects(payBookingPayment(11), (error) => error instanceof ApiError && error.status === 409 && !error.message.includes("private"));
   await assert.rejects(payBookingPayment(0), /Invalid payment ID/);
+});
+
+test("reward redemption payment calls the dedicated points endpoint", async () => {
+  session();
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init });
+    if (new URL(url).pathname === "/bookings/pay-with-reward-points/11") {
+      return new Response(JSON.stringify(paid));
+    }
+    throw new Error("Unexpected request");
+  };
+
+  assert.deepEqual(await payBookingPaymentWithRewards(11), paid);
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).pathname, "/bookings/pay-with-reward-points/11");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer private-test-token");
+  assert.equal(calls[0].init.method, undefined);
 });
