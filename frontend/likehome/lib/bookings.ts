@@ -1,6 +1,6 @@
 import { ApiError, getAuthorizedJson, postAuthorizedJson } from "./api.ts";
 import type { AdjustmentDetailResponse, AdjustmentSettlementRequest, AdjustmentSettlementResponse, BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationChargeResponse, CancellationResponse, HotelRevalidationResponse, PaymentResponse, ReservationChangeConfirmRequest, ReservationChangeQuoteResponse, ReservationChangeReceiptAdjustment, ReservationChangeReceiptResponse, ReservationChangeReviewRequest, ReservationFinancialSummary } from "./api-types.ts";
-import { validateSearchInputs } from "./search-validation.mjs";
+import { validateStayDates } from "./search-validation.mjs";
 import { getAccessToken } from "./token-storage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -291,26 +291,19 @@ export async function getReservationFinancialSummary(reservationId: number): Pro
 }
 
 function normalizeReservationChangeReview(value: unknown): Required<ReservationChangeReviewRequest> {
-  const fields = ["check_in_date", "check_out_date", "q", "adults", "children", "currency", "gl", "hl"];
+  const fields = ["check_in_date", "check_out_date"];
   if (!isRecord(value) || Object.keys(value).some((key) => !fields.includes(key)) ||
       typeof value.check_in_date !== "string" || typeof value.check_out_date !== "string" ||
-      value.check_in_date.length !== 10 || value.check_out_date.length !== 10 ||
-      typeof value.q !== "string" || !value.q.trim() || [...value.q].length > 255 ||
-      typeof value.adults !== "number" || !Number.isInteger(value.adults) || value.adults < 1 || value.adults > 20 ||
-      typeof value.children !== "number" || !Number.isInteger(value.children) || value.children < 0 || value.children > 20 ||
-      (value.currency !== undefined && value.currency !== "USD") ||
-      (value.gl !== undefined && value.gl !== "us") || (value.hl !== undefined && value.hl !== "en")) {
+      value.check_in_date.length !== 10 || value.check_out_date.length !== 10) {
     throw new Error("Invalid reservation change review");
   }
-  const errors = validateSearchInputs({
-    checkIn: value.check_in_date, checkOut: value.check_out_date, guests: String(value.adults),
+  const errors = validateStayDates({
+    checkIn: value.check_in_date, checkOut: value.check_out_date,
   });
   if (Object.keys(errors).length > 0) throw new Error("Invalid reservation change review");
 
-  // Copy only the backend's review context; property identity and prices come from the server.
   return {
-    check_in_date: value.check_in_date, check_out_date: value.check_out_date, q: value.q.trim(),
-    adults: value.adults, children: value.children, currency: "USD", gl: "us", hl: "en",
+    check_in_date: value.check_in_date, check_out_date: value.check_out_date,
   };
 }
 
@@ -327,11 +320,13 @@ function isRevalidatedChangeQuote(
     [...value.property_token].length <= 255 &&
     typeof value.hotel_name === "string" && !!value.hotel_name.trim() && [...value.hotel_name].length <= 255 &&
     value.check_in_date === request.check_in_date && value.check_out_date === request.check_out_date &&
-    value.adults === request.adults && value.children === request.children && value.currency === request.currency &&
+    typeof value.adults === "number" && Number.isInteger(value.adults) && value.adults >= 1 && value.adults <= 20 &&
+    typeof value.children === "number" && Number.isInteger(value.children) && value.children >= 0 && value.children <= 20 &&
+    value.currency === "USD" &&
     isPositiveSafeId(value.number_of_nights) && value.number_of_nights === nights &&
     value.availability === "available" && value.rate_rule === "lowest_eligible_provider_base_total" &&
     typeof value.source === "string" && !!value.source.trim() &&
-    isPositiveSafeId(value.guest_capacity) && value.guest_capacity >= request.adults + request.children &&
+    isPositiveSafeId(value.guest_capacity) && value.guest_capacity >= value.adults + value.children &&
     isPositiveQuoteAmount(value.current_price_per_night) && isPositiveQuoteAmount(value.provider_base_total) &&
     (value.provider_total_with_taxes_fees === null || isPositiveQuoteAmount(value.provider_total_with_taxes_fees)) &&
     isPositiveQuoteAmount(value.likehome_reservation_total) && isPositiveQuoteAmount(value.likehome_payment_amount) &&
@@ -373,7 +368,7 @@ function isConfirmationStay(checkIn: unknown, checkOut: unknown): boolean {
   if (typeof checkIn !== "string" || typeof checkOut !== "string" || checkIn.length !== 10 || checkOut.length !== 10) return false;
   // Validate calendar/order only. Exact committed retries must reach the backend
   // even after stay dates or quote expiry; unconsumed requests are checked there.
-  return Object.keys(validateSearchInputs({ checkIn, checkOut, guests: "1" }, "0001-01-01")).length === 0;
+  return Object.keys(validateStayDates({ checkIn, checkOut }, "0001-01-01")).length === 0;
 }
 
 function reservationChangeConfirmation(value: unknown): ReservationChangeConfirmRequest {

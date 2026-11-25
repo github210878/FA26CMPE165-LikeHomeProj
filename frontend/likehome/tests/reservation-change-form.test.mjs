@@ -295,7 +295,7 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
 }
 
 function fill(h) {
-  for (const [name, value] of Object.entries({ check_in_date: "2096-02-28", check_out_date: "2096-03-01", q: "San Jose", adults: "2", children: "1" })) h.edit(name, value);
+  for (const [name, value] of Object.entries({ check_in_date: "2096-02-28", check_out_date: "2096-03-01" })) h.edit(name, value);
   return h.render();
 }
 
@@ -372,58 +372,51 @@ test("current booking details keep the quote form dormant for every reservation 
   }
 });
 
-test("controlled labelled fields initialize only valid booking dates and leave reconfirmation fields empty", () => {
+test("controlled labelled fields show only the two valid booking dates", () => {
   const h = harness(); let view = h.render();
   assert.equal(view.input("check_in_date").props.value, "2096-02-28");
   assert.equal(view.input("check_out_date").props.value, "2096-03-01");
-  for (const name of ["q", "adults", "children"]) assert.equal(view.input(name).props.value, "");
-  assert.match(view.html, /Reconfirm your destination and both guest counts/);
-  assert.equal(view.nodes.filter((n) => n.type === "label").length, 5);
+  for (const name of ["q", "adults", "children"]) assert.equal(view.input(name), undefined);
+  assert.match(view.html, /Your hotel and guest details stay the same/);
+  assert.equal(view.nodes.filter((n) => n.type === "label").length, 2);
   for (const name of ["check_in_date", "check_out_date"]) assert.equal(view.input(name).props.type, "date");
-  for (const name of ["adults", "children"]) assert.equal(view.input(name).props.type, "number");
   view = h.render({ reservationId: 43, checkInDate: "2095-02-29", checkOutDate: "nonsense" });
   assert.equal(view.input("check_in_date").props.value, ""); assert.equal(view.input("check_out_date").props.value, "");
   assert.equal(quoteCalls(h).length, 0);
 });
 
-test("explicit submission sends only customer-entered review context with supported internal defaults", async () => {
+test("explicit submission sends only the two dates with no invented booking context", async () => {
   const h = harness(); fill(h);
   assert.equal(quoteCalls(h).length, 0);
   const view = h.submit();
   assert.equal(view.form.props["aria-busy"], true);
   assert.match(view.html, /Requesting price quote/);
   assert.deepEqual(quoteCalls(h), [{ operation: "quote", id: 42, request: {
-    check_in_date: "2096-02-28", check_out_date: "2096-03-01", q: "San Jose", adults: 2, children: 1,
-    currency: "USD", gl: "us", hl: "en",
+    check_in_date: "2096-02-28", check_out_date: "2096-03-01",
   } }]);
   await tick(); h.render();
   assert.deepEqual(h.calls.map((c) => c.operation), ["quote"]);
   assert.deepEqual(h.navigation, []);
 });
 
-test("leaves blank occupancy invalid rather than inventing defaults and delegates rules to the adapter", async () => {
+test("date validation errors are described without asking for removed fields", async () => {
   const h = harness({ readQuote: async () => { throw new Error("Invalid reservation change review"); } });
-  h.render(); h.edit("q", "San Jose"); h.submit(); await tick();
+  h.render(); h.submit(); await tick();
   const request = quoteCalls(h)[0].request;
-  assert.ok(Number.isNaN(request.adults)); assert.ok(Number.isNaN(request.children));
+  assert.deepEqual(Object.keys(request), ["check_in_date", "check_out_date"]);
   const view = h.render();
-  assert.match(view.html, /role="alert"/); assert.match(view.html, /Check your dates, destination, and whole-number guest counts/);
-  assert.equal(view.input("adults").props.value, "");
+  assert.match(view.html, /role="alert"/);
+  assert.match(view.html, /Check your new check-in and check-out dates/);
   assert.match(view.form.props["aria-describedby"], /change-review-error-42/);
 });
 
-test("form values reach the existing adapter's date, destination, and occupancy validation without a network call", async (t) => {
+test("invalid dates are rejected by the adapter without a network call", async (t) => {
   const cases = [
     ["blank check-in", "check_in_date", ""], ["malformed check-in", "check_in_date", "2096-2-28"],
     ["impossible date", "check_in_date", "2096-02-30"], ["non-leap date", "check_in_date", "2095-02-29"],
     ["past date", "check_in_date", "2000-01-01"], ["blank check-out", "check_out_date", ""],
     ["impossible check-out", "check_out_date", "2096-04-31"],
     ["equal dates", "check_out_date", "2096-02-28"], ["reversed dates", "check_out_date", "2096-02-27"],
-    ["blank destination", "q", ""], ["whitespace destination", "q", "   "], ["long destination", "q", "x".repeat(256)],
-    ["blank adults", "adults", ""], ["zero adults", "adults", "0"], ["negative adults", "adults", "-1"],
-    ["fractional adults", "adults", "1.5"], ["too many adults", "adults", "21"], ["invalid adults", "adults", "abc"],
-    ["blank children", "children", ""], ["negative children", "children", "-1"],
-    ["fractional children", "children", "0.5"], ["too many children", "children", "21"],
   ];
   for (const [label, name, value] of cases) {
     await t.test(label, async () => {
@@ -431,7 +424,7 @@ test("form values reach the existing adapter's date, destination, and occupancy 
       fill(h); h.edit(name, value); h.submit(); await tick();
       const view = h.render();
       assert.match(view.html, /role="alert"/);
-      assert.match(view.html, /Check your dates, destination, and whole-number guest counts/);
+      assert.match(view.html, /Check your new check-in and check-out dates/);
       assert.doesNotMatch(view.html, /Price quote \(USD\)|Quoted Hotel/);
       assert.equal(view.input(name).props.value, value);
       assert.equal(quoteCalls(h).length, 1);
@@ -442,10 +435,13 @@ test("form values reach the existing adapter's date, destination, and occupancy 
   }
 });
 
-test("explicitly reconfirmed zero children remains zero without borrowing historical occupancy", async () => {
-  const h = harness(); fill(h); h.edit("children", "0"); h.submit(); await tick();
-  assert.equal(quoteCalls(h)[0].request.children, 0);
+test("quote preview displays guest counts returned by the server without requesting them", async () => {
+  const h = harness({ readQuote: async () => quote(42, { adults: 3, children: 0 }) });
+  fill(h); h.submit(); await tick();
+  assert.equal(quoteCalls(h)[0].request.children, undefined);
+  assert.equal(quoteCalls(h)[0].request.adults, undefined);
   assert.equal(h.render().rows.get("Children"), "0");
+  assert.equal(h.render().rows.get("Adults"), "3");
 });
 
 test("the existing adapter's missing-authentication error redirects safely before fetch", async () => {
@@ -466,8 +462,8 @@ test("blocks same-tick duplicate submits, disables pending fields, and keeps a c
   assert.equal(quoteCalls(h).length, 1);
   assert.equal(view.buttons("Requesting quote…")[0].props.disabled, true);
   assert.equal(view.nodes.find((n) => n.type === "fieldset").props.disabled, true);
-  h.edit("q", "Attempted edit while disabled");
-  assert.equal(h.render().input("q").props.value, "San Jose");
+  h.edit("check_in_date", "2096-04-01");
+  assert.equal(h.render().input("check_in_date").props.value, "2096-02-28");
   h.submit(); assert.equal(quoteCalls(h).length, 1);
   pending.resolve(quote()); await tick(); view = h.render();
   assert.equal(view.form.props["aria-busy"], false);
@@ -492,7 +488,7 @@ test("preview shows validated hotel, dates, guests, independent USD prices, and 
 });
 
 test("editing any review field immediately discards the old preview and requires another explicit request", async (t) => {
-  for (const [name, value] of Object.entries({ check_in_date: "2096-02-29", check_out_date: "2096-03-02", q: "Palo Alto", adults: "3", children: "0" })) {
+  for (const [name, value] of Object.entries({ check_in_date: "2096-02-29", check_out_date: "2096-03-02" })) {
     await t.test(name, async () => {
       const h = harness(); fill(h); h.submit(); await tick(); h.render();
       assert.equal(h.timers.size, 1);
@@ -501,7 +497,7 @@ test("editing any review field immediately discards the old preview and requires
       assert.equal(h.timers.size, 0); assert.equal(quoteCalls(h).length, 1);
       h.submit(); await tick(); view = h.render();
       assert.equal(quoteCalls(h).length, 2);
-      assert.equal(quoteCalls(h)[1].request[name], ["adults", "children"].includes(name) ? Number(value) : value);
+      assert.equal(quoteCalls(h)[1].request[name], value);
       assert.match(view.html, /Price quote \(USD\)/);
     });
   }
@@ -510,7 +506,7 @@ test("editing any review field immediately discards the old preview and requires
 test("HTTP and transport errors use safe messages without automatic retry or losing form values", async (t) => {
   const cases = [
     [new ApiError(400), /overlap another booking/], [new ApiError(404), /unavailable or cannot be accessed/],
-    [new ApiError(409), /has changed or cannot support/], [new ApiError(422), /Check your dates/],
+    [new ApiError(409), /has changed or cannot support/], [new ApiError(422), /Check your new check-in and check-out dates/],
     [new ApiError(502), /provider is unavailable/], [new ApiError(504), /took too long/],
     [new ApiError(500), /could not request a price quote/], [new TypeError("private network secret"), /valid, current price quote/],
     [new Error("Reservation change quote returned an unexpected response"), /valid, current price quote/],
@@ -522,7 +518,7 @@ test("HTTP and transport errors use safe messages without automatic retry or los
       fill(h); h.submit(); await tick(); let view = h.render();
       assert.match(view.html, message); assert.match(view.html, /role="alert"/);
       assert.doesNotMatch(view.html, /private network secret|API request failed|unexpected response|invalid JSON/);
-      assert.equal(view.input("q").props.value, "San Jose");
+      assert.equal(view.input("check_in_date").props.value, "2096-02-28");
       h.render(); await tick(); view = h.render();
       assert.equal(quoteCalls(h).length, 1); assert.equal(h.auth.status, "authenticated");
       assert.equal(h.navigation.length, 0);
@@ -590,7 +586,7 @@ test("a synthetic parent closing the form ignores late success or 401 and reopen
       assert.equal(h.writes.length, before); assert.equal(h.auth.status, "authenticated");
       assert.deepEqual(h.navigation, []); assert.doesNotMatch(view.html, /Quoted Hotel|Price quote \(USD\)/);
       view = h.show(true);
-      assert.equal(view.input("q").props.value, ""); assert.equal(view.input("children").props.value, "");
+      assert.equal(view.input("q"), undefined); assert.equal(view.input("children"), undefined);
       assert.equal(quoteCalls(h).length, 1);
     });
   }
@@ -670,10 +666,10 @@ test("unauthenticated or restoring standalone forms render no protected content 
   }
 });
 
-test("reservation prop changes reset quote and all reconfirmation fields immediately", async () => {
+test("reservation prop changes reset quote and initialize the new booking dates", async () => {
   const h = harness(); fill(h); h.submit(); await tick(); h.render();
   const view = h.render({ reservationId: 43, checkInDate: "2096-04-01", checkOutDate: "2096-04-03" });
-  assert.equal(view.input("q").props.value, ""); assert.equal(view.input("adults").props.value, "");
+  assert.equal(view.input("q"), undefined); assert.equal(view.input("adults"), undefined);
   assert.equal(view.input("check_in_date").props.value, "2096-04-01");
   assert.doesNotMatch(view.html, /Quoted Hotel|284\.63/); assert.equal(h.timers.size, 0);
   assert.equal(quoteCalls(h).length, 1);
@@ -723,11 +719,9 @@ test("form markup has labelled required inputs, accessible errors, responsive wi
     assert.equal(node.props.required, true);
     assert.match(node.props.className, /min-h-11/); assert.match(node.props.className, /w-full min-w-0 max-w-full/);
   }
-  assert.equal(view.input("adults").props.min, 1); assert.equal(view.input("children").props.min, 0);
-  assert.equal(view.input("adults").props.step, 1); assert.equal(view.input("children").props.max, 20);
   assert.match(view.html, /sm:grid-cols-2/); assert.match(view.html, /min-w-0/);
   assert.equal(view.form.props["aria-label"], "Reservation change quote");
-  assert.equal(view.nodes.filter((n) => n.type === "input").length, 5);
+  assert.equal(view.nodes.filter((n) => n.type === "input").length, 2);
   assert.match(view.buttons("Request a quote")[0].props.className, /min-h-11/);
   assert.doesNotMatch(view.html, /<table|min-w-\[|w-\[[0-9]|overflow-x|name="currency"|name="gl"|name="hl"/);
 });

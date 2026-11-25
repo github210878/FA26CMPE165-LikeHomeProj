@@ -219,12 +219,6 @@ export type ReservationFinancialSummary = {
 export type ReservationChangeReviewRequest = {
   check_in_date: string;
   check_out_date: string;
-  q: string;
-  adults: number;
-  children: number;
-  currency?: "USD";
-  gl?: "us";
-  hl?: "en";
 };
 
 // A temporary review artifact; receiving it does not confirm a reservation change.
