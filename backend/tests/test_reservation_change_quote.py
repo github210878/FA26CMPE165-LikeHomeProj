@@ -161,11 +161,11 @@ def test_owner_receives_provider_quote_and_typed_response_without_writes(quote_a
                                 "adults": 3, "children": 1, "currency": "USD", "gl": "us", "hl": "en"}]
     quote = body["quote"]
     assert quote["hotel_name"] == "Revalidated hotel"
-    assert quote["current_price_per_night"] == 120
+    assert quote["current_price_per_night"] == 135
     assert quote["provider_base_total"] == 240
     assert quote["provider_total_with_taxes_fees"] == 270
-    assert quote["likehome_reservation_total"] == 252
-    assert quote["likehome_payment_amount"] == 272.16
+    assert quote["likehome_reservation_total"] == 283.50
+    assert quote["likehome_payment_amount"] == 306.18
     assert quote["price_changed"] is None
     claims = verified(body)
     assert claims["review"] == {**review(q="Reconfirmed city", adults=3), "currency": "USD", "gl": "us", "hl": "en"}
@@ -342,6 +342,8 @@ def test_unavailable_or_mismatched_raw_provider_result_fails_closed(quote_app, m
     ("likehome_payment_amount", float("nan")), ("likehome_reservation_total", float("inf")),
     ("likehome_payment_amount", True), ("likehome_payment_amount", 100000000),
     ("provider_total_with_taxes_fees", 1), ("provider_total_with_taxes_fees", 100000000),
+    ("provider_total_with_taxes_fees", None), ("provider_total_with_taxes_fees", True),
+    ("provider_total_with_taxes_fees", "270.00"), ("provider_total_with_taxes_fees", 270.001),
     ("current_price_per_night", 119), ("likehome_reservation_total", 251),
     ("likehome_payment_amount", 272.15),
 ])
@@ -357,20 +359,37 @@ def test_unverifiable_normalized_provider_quote_is_never_signed(quote_app, monke
     assert "quote_id" not in response.json()
 
 
-def test_provider_rounding_uses_existing_base_total_rule_and_optional_all_in(quote_app, monkeypatch):
+def test_quote_priced_from_base_total_is_never_signed(quote_app, monkeypatch):
+    original = hotel_service.revalidate_hotel
+
+    def base_priced(info):
+        quote = original(info).model_dump()
+        quote.update(current_price_per_night=120, likehome_reservation_total=252,
+                     likehome_payment_amount=272.16)
+        return quote
+
+    monkeypatch.setattr(hotel_service, "revalidate_hotel", base_priced)
+    response = quote_app.post()
+    assert response.status_code == 502
+    assert "quote_id" not in response.json()
+
+
+def test_provider_total_rounding_matches_hotel_revalidation(quote_app, monkeypatch):
     def provider(params):
         return {"property_token": params["property_token"], "name": "Hotel",
                 "prices": [{"source": "Provider", "num_guests": 3,
                             "rate_per_night": {"extracted_before_taxes_fees": 100},
-                            "total_rate": {"extracted_before_taxes_fees": 201}}]}
+                            "total_rate": {"extracted_before_taxes_fees": 201,
+                                           "extracted_lowest": 231.01}}]}
     monkeypatch.setattr(serpapi_client, "search_google_hotels", provider)
     response = quote_app.post()
     assert response.status_code == 200
     quote = response.json()["quote"]
-    assert quote["provider_total_with_taxes_fees"] is None
-    assert quote["current_price_per_night"] == 100.5
-    assert quote["likehome_reservation_total"] == 211.05
-    assert quote["likehome_payment_amount"] == 227.93
+    assert quote["provider_base_total"] == 201
+    assert quote["provider_total_with_taxes_fees"] == 231.01
+    assert quote["current_price_per_night"] == 115.51
+    assert quote["likehome_reservation_total"] == 242.56
+    assert quote["likehome_payment_amount"] == 261.96
 
 
 def test_acknowledgement_is_scoped_private_from_logs_and_expires_at_ten_minutes(quote_app, monkeypatch, caplog):

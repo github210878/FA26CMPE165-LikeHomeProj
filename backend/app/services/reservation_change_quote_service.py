@@ -160,8 +160,8 @@ def _validated_quote(value: object, info: HotelRevalidationRequest) -> HotelReva
         money_fields = ("current_price_per_night", "provider_base_total",
                         "likehome_reservation_total", "likehome_payment_amount")
         amounts = {field: _amount(raw.get(field)) for field in money_fields}
-        all_in = raw.get("provider_total_with_taxes_fees")
-        if all_in is not None and _amount(all_in) < amounts["provider_base_total"]:
+        provider_total = _amount(raw.get("provider_total_with_taxes_fees"))
+        if provider_total < amounts["provider_base_total"]:
             raise ValueError("Inconsistent provider total")
         quote = HotelRevalidationResponse.model_validate(raw)
         nights = (info.check_out_date - info.check_in_date).days
@@ -173,9 +173,10 @@ def _validated_quote(value: object, info: HotelRevalidationRequest) -> HotelReva
                 or not quote.hotel_name.strip() or len(quote.hotel_name) > 255 or not quote.source.strip()
                 or quote.price_changed is not None):
             raise ValueError("Mismatched quote context")
-        base = amounts["provider_base_total"]
-        reservation_total = _cents(base * Decimal(str(Constants.SERVICE_FEE)))
-        if (amounts["current_price_per_night"] != _cents(base / nights)
+        # Match hotel revalidation: provider taxes/fees are included before
+        # applying the LikeHome service fee and then LikeHome sales tax.
+        reservation_total = _cents(provider_total * Decimal(str(Constants.SERVICE_FEE)))
+        if (amounts["current_price_per_night"] != _cents(provider_total / nights)
                 or amounts["likehome_reservation_total"] != reservation_total
                 or amounts["likehome_payment_amount"] != _cents(reservation_total * Decimal(str(Constants.SALE_TAX)))):
             raise ValueError("Inconsistent LikeHome pricing")
