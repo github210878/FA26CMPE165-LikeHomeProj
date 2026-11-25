@@ -53,21 +53,20 @@ afterEach(() => {
 
 function review(overrides = {}) {
   return {
-    check_in_date: "2096-02-28", check_out_date: "2096-03-01", q: "San Jose",
-    adults: 2, children: 1, ...overrides,
+    check_in_date: "2096-02-28", check_out_date: "2096-03-01", ...overrides,
   };
 }
 
-function response(request = review()) {
+function response(request = review(), adults = 2, children = 1) {
   return {
     reservation_id: 42, quote_id: quoteId, expires_at: new Date(Date.now() + 600000).toISOString(),
     quote: {
       property_token: "synthetic-owned-property", hotel_name: "Synthetic Hotel",
       check_in_date: request.check_in_date, check_out_date: request.check_out_date,
-      adults: request.adults, children: request.children, currency: "USD",
+      adults, children, currency: "USD",
       number_of_nights: (Date.parse(request.check_out_date) - Date.parse(request.check_in_date)) / 86400000,
       availability: "available", rate_rule: "lowest_eligible_provider_base_total", source: "Synthetic Provider",
-      guest_capacity: request.adults + request.children, current_price_per_night: 100, provider_base_total: 200,
+      guest_capacity: adults + children, current_price_per_night: 100, provider_base_total: 200,
       provider_total_with_taxes_fees: 218, likehome_reservation_total: 210,
       likehome_payment_amount: 226.8, price_changed: null,
     },
@@ -88,25 +87,25 @@ function assertQuotePost(expected = review(), reservationId = 42) {
   assert.equal(url, `${base}/bookings/${reservationId}/change-quote`);
   assert.equal(init.method, "POST");
   assert.deepEqual(init.headers, { Authorization: `Bearer ${token}`, "Content-Type": "application/json" });
-  assert.deepEqual(JSON.parse(init.body), { ...expected, q: expected.q.trim(), currency: "USD", gl: "us", hl: "en" });
+  assert.deepEqual(JSON.parse(init.body), expected);
   assert.ok(!url.includes(token) && !url.includes(quoteId));
   assert.ok(!init.body.includes(token) && !init.body.includes(quoteId));
 }
 
 test("returns an opaque review with one authenticated POST and exact normalized body", async () => {
-  const request = Object.freeze(review({ q: "  San Jose  " }));
+  const request = Object.freeze(review());
   const value = response(request);
   respond(value);
   assert.deepEqual(await getReservationChangeQuote(42, request), value);
   assertQuotePost(request);
-  assert.equal(request.q, "  San Jose  ");
+  assert.deepEqual(Object.keys(request), ["check_in_date", "check_out_date"]);
   assert.equal(entries.get("likehome_access_token"), token);
 });
 
-test("accepts explicit supported context and nullable/boolean revalidation fields", async (t) => {
+test("accepts server-established context and nullable/boolean revalidation fields", async (t) => {
   for (const changed of [null, false, true]) {
     await t.test(String(changed), async () => {
-      const request = review({ currency: "USD", gl: "us", hl: "en" });
+      const request = review();
       const value = response(request);
       value.quote.price_changed = changed;
       value.quote.provider_total_with_taxes_fees = null;
@@ -120,8 +119,8 @@ test("accepts explicit supported context and nullable/boolean revalidation field
 test("accepts backend guest boundaries without imposing a combined 20-guest limit", async (t) => {
   for (const [adults, children] of [[1, 0], [20, 20]]) {
     await t.test(`${adults} adults and ${children} children`, async () => {
-      const request = review({ adults, children });
-      const value = response(request);
+      const request = review();
+      const value = response(request, adults, children);
       respond(value);
       assert.deepEqual(await getReservationChangeQuote(42, request), value);
       assertQuotePost(request);
@@ -129,11 +128,12 @@ test("accepts backend guest boundaries without imposing a combined 20-guest limi
   }
 });
 
-test("accepts Unicode destination length as backend characters rather than UTF-16 units", async () => {
-  const request = review({ q: "🌍".repeat(255) });
-  respond(response(request));
-  await getReservationChangeQuote(42, request);
-  assertQuotePost(request);
+test("accepts Unicode hotel names supplied by the server", async () => {
+  const value = response();
+  value.quote.hotel_name = "🌍".repeat(255);
+  respond(value);
+  await getReservationChangeQuote(42, review());
+  assertQuotePost();
 });
 
 test("accepts check-in today, leap days, and DST-spanning stays using calendar nights", async (t) => {
@@ -160,7 +160,7 @@ test("validates against its own copied request even if the caller edits the orig
   globalThis.fetch = async (url, init) => {
     calls.push({ url, init });
     request.check_in_date = "2096-04-01";
-    request.adults = 20;
+    request.check_out_date = "2096-04-03";
     return { ok: true, json: async () => value };
   };
   assert.deepEqual(await getReservationChangeQuote(42, request), value);
@@ -192,7 +192,7 @@ test("rejects invalid reservation IDs before any request", async (t) => {
 
 test("rejects malformed request shape and omitted required fields", async (t) => {
   const cases = { null: null, array: [], string: "review" };
-  for (const key of ["check_in_date", "check_out_date", "q", "adults", "children"]) {
+  for (const key of ["check_in_date", "check_out_date"]) {
     const request = review();
     delete request[key];
     cases[`missing ${key}`] = request;
@@ -233,17 +233,10 @@ test("rejects invalid, past, equal, and reversed calendar dates", async (t) => {
   }
 });
 
-test("rejects invalid destinations, strict guest counts, and unsupported context", async (t) => {
-  const cases = [];
-  for (const q of ["", " \t\n ", "x".repeat(256), "🌍".repeat(256), null, 42]) cases.push({ q });
-  for (const adults of [0, -1, 21, 1.5, "2", true, null, NaN, Infinity]) cases.push({ adults });
-  for (const children of [-1, 21, 0.5, "0", false, null, NaN, Infinity]) cases.push({ children });
-  for (const [key, invalid] of [["currency", "EUR"], ["gl", "US"], ["hl", "es"]]) {
-    cases.push({ [key]: invalid }, { [key]: null }, { [key]: "" });
-  }
-  for (const [index, changes] of cases.entries()) {
-    await t.test(`${index}: ${Object.keys(changes)[0]}`, async () => {
-      await assert.rejects(getReservationChangeQuote(42, review(changes)), { message: "Invalid reservation change review" });
+test("rejects destination, guest and locale overrides in a dates-only request", async (t) => {
+  for (const [key, value] of [["q", "San Jose"], ["adults", 2], ["children", 0], ["currency", "USD"], ["gl", "us"], ["hl", "en"]]) {
+    await t.test(key, async () => {
+      await assert.rejects(getReservationChangeQuote(42, review({ [key]: value })), { message: "Invalid reservation change review" });
       assert.equal(calls.length, 0);
     });
   }
@@ -314,7 +307,8 @@ test("rejects invalid nested identity, dates, occupancy, availability, and rate 
     { property_token: "" }, { property_token: " \t" }, { property_token: 42 }, { property_token: "x".repeat(256) },
     { hotel_name: "" }, { hotel_name: "  " }, { hotel_name: null }, { hotel_name: "x".repeat(256) },
     { check_in_date: "2096-02-29" }, { check_out_date: "2096-03-02" }, { check_in_date: "2096-02-28T00:00:00Z" },
-    { adults: 1 }, { adults: "2" }, { children: 0 }, { children: "1" }, { currency: "EUR" },
+    { adults: 0 }, { adults: 21 }, { adults: 1.5 }, { adults: "2" }, { adults: true },
+    { children: -1 }, { children: 21 }, { children: 0.5 }, { children: "1" }, { children: false }, { currency: "EUR" },
     { number_of_nights: 1 }, { number_of_nights: 0 }, { number_of_nights: 2.5 }, { number_of_nights: "2" },
     { availability: "unavailable" }, { availability: true }, { rate_rule: "cheapest" },
     { source: " \n" }, { source: 1 }, { guest_capacity: 2 }, { guest_capacity: 3.5 },

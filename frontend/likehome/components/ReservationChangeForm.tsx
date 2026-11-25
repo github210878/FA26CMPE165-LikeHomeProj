@@ -8,7 +8,7 @@ import type { ReservationChangeQuoteResponse } from "@/lib/api-types";
 import { getReservationChangeQuote } from "@/lib/bookings";
 
 type Props = { reservationId: number; checkInDate: string; checkOutDate: string; onQuoteReady?: (quote: ReservationChangeQuoteResponse | null) => void; };
-type Fields = { check_in_date: string; check_out_date: string; q: string; adults: string; children: string };
+type Fields = { check_in_date: string; check_out_date: string };
 type ReviewState =
   | { kind: "idle" | "loading" | "expired" | "unauthorized" }
   | { kind: "error"; message: string; retryable: boolean }
@@ -32,7 +32,7 @@ function quoteError(error: unknown): { kind: "error"; message: string; retryable
       400: "These dates may overlap another booking, or this change is not allowed. Review your request.",
       404: "This booking is unavailable or cannot be accessed with your account.",
       409: "This booking has changed or cannot support this request. Review its current details before trying again.",
-      422: "Check your dates, destination, and whole-number guest counts, then request a quote again.",
+      422: "Check your new check-in and check-out dates, then request a quote again.",
       502: "The hotel provider is unavailable. Please try requesting a quote again.",
       504: "The hotel provider took too long to respond. Please try requesting a quote again.",
     };
@@ -40,7 +40,7 @@ function quoteError(error: unknown): { kind: "error"; message: string; retryable
       retryable: ![400, 404, 409, 422].includes(error.status) };
   }
   if (error instanceof Error && error.message === "Invalid reservation change review") {
-    return { kind: "error", message: "Check your dates, destination, and whole-number guest counts, then request a quote again.", retryable: false };
+    return { kind: "error", message: "Check your new check-in and check-out dates, then request a quote again.", retryable: false };
   }
   return { kind: "error", message: invalidQuoteMessage, retryable: true };
 }
@@ -50,7 +50,6 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate, onQuoteReady }
   const { invalidateSession } = useAuth();
   const [fields, setFields] = useState<Fields>(() => ({
     check_in_date: initialDate(checkInDate), check_out_date: initialDate(checkOutDate),
-    q: "", adults: "", children: "",
   }));
   const [state, setState] = useState<ReviewState>({ kind: "idle" });
   const active = useRef(false);
@@ -117,10 +116,7 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate, onQuoteReady }
     onQuoteReady?.(null);
     try {
       const review = await getReservationChangeQuote(reservationId, {
-        check_in_date: fields.check_in_date, check_out_date: fields.check_out_date, q: fields.q,
-        adults: fields.adults.trim() ? Number(fields.adults) : NaN,
-        children: fields.children.trim() ? Number(fields.children) : NaN,
-        currency: "USD", gl: "us", hl: "en",
+        check_in_date: fields.check_in_date, check_out_date: fields.check_out_date,
       });
       if (!active.current || generation.current !== requestGeneration) return;
       const expiration = Date.parse(review.expires_at);
@@ -157,14 +153,15 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate, onQuoteReady }
       className="mt-3 min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:p-4">
       <h4 className="font-semibold text-slate-950">Request a change quote</h4>
       <p id={helpId} className="mt-2 break-words text-sm text-slate-700">
-        Reconfirm your destination and both guest counts. Requesting a quote does not change your booking.
+        Choose your new check-in and check-out dates. Your hotel and guest details stay the same.
+        Requesting a quote does not change your booking.
         Eligibility and availability will be checked when you request a quote.
       </p>
       <form noValidate aria-label="Reservation change quote" aria-busy={loading}
         aria-describedby={`${helpId}${state.kind === "error" ? ` ${errorId}` : ""}`}
         onSubmit={(event) => void submit(event)} className="mt-4 min-w-0">
         <fieldset disabled={loading} className="grid min-w-0 gap-4 sm:grid-cols-2">
-          <legend className="sr-only">Proposed stay and reconfirmed guests</legend>
+          <legend className="sr-only">New stay dates</legend>
           <label className="min-w-0 text-sm font-medium text-slate-900">New check-in date
             <input type="date" name="check_in_date" required value={fields.check_in_date}
               onChange={(event) => edit("check_in_date", event.target.value)} className={inputClass} />
@@ -172,18 +169,6 @@ function ChangeReview({ reservationId, checkInDate, checkOutDate, onQuoteReady }
           <label className="min-w-0 text-sm font-medium text-slate-900">New check-out date
             <input type="date" name="check_out_date" required value={fields.check_out_date}
               onChange={(event) => edit("check_out_date", event.target.value)} className={inputClass} />
-          </label>
-          <label className="min-w-0 text-sm font-medium text-slate-900 sm:col-span-2">Reconfirmed destination
-            <input type="text" name="q" required value={fields.q} autoComplete="off"
-              onChange={(event) => edit("q", event.target.value)} className={inputClass} />
-          </label>
-          <label className="min-w-0 text-sm font-medium text-slate-900">Number of adults
-            <input type="number" name="adults" required min={1} max={20} step={1} value={fields.adults}
-              onChange={(event) => edit("adults", event.target.value)} className={inputClass} />
-          </label>
-          <label className="min-w-0 text-sm font-medium text-slate-900">Number of children
-            <input type="number" name="children" required min={0} max={20} step={1} value={fields.children}
-              onChange={(event) => edit("children", event.target.value)} className={inputClass} />
           </label>
         </fieldset>
         {loading && <p role="status" className="mt-3 text-sm text-slate-700">Requesting price quote…</p>}

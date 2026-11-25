@@ -18,13 +18,12 @@ function isCalendarDate(value) {
 }
 
 /**
- * Validate the existing search form without changing its request field names.
- * @param {{checkIn: string, checkOut: string, guests: string}} inputs
+ * @param {{checkIn: string, checkOut: string}} inputs
  * @param {string} [today] Local calendar date, injectable for deterministic tests.
- * @returns {{checkIn?: string, checkOut?: string, guests?: string}}
+ * @returns {{checkIn?: string, checkOut?: string}}
  */
-export function validateSearchInputs(inputs, today = getLocalToday()) {
-  /** @type {{checkIn?: string, checkOut?: string, guests?: string}} */
+export function validateStayDates(inputs, today = getLocalToday()) {
+  /** @type {{checkIn?: string, checkOut?: string}} */
   const errors = {};
   const validCheckIn = isCalendarDate(inputs.checkIn);
   const validCheckOut = isCalendarDate(inputs.checkOut);
@@ -45,6 +44,17 @@ export function validateSearchInputs(inputs, today = getLocalToday()) {
     errors.checkOut = "Check-out date must be after check-in date.";
   }
 
+  return errors;
+}
+
+/**
+ * @param {{checkIn: string, checkOut: string, guests: string}} inputs
+ * @param {string} [today]
+ * @returns {{checkIn?: string, checkOut?: string, guests?: string}}
+ */
+export function validateSearchInputs(inputs, today = getLocalToday()) {
+  /** @type {{checkIn?: string, checkOut?: string, guests?: string}} */
+  const errors = validateStayDates(inputs, today);
   const guests = inputs.guests.trim();
   if (!guests) {
     errors.guests = "Enter the number of guests.";
