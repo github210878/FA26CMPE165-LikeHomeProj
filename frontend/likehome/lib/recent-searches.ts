@@ -5,6 +5,14 @@ const STORAGE_KEY = "likehome_recent_searches_v1";
 const CHANGE_EVENT = "likehome:recent-searches-changed";
 const MAX_RECENT_SEARCHES = 5;
 
+function storageKey(userId: number | null): string | null {
+  // Guest history is separate; never assign the old shared history to an account.
+  if (userId === null) return `${STORAGE_KEY}_guest`;
+  return Number.isSafeInteger(userId) && userId > 0
+    ? `${STORAGE_KEY}_user_${userId}`
+    : null;
+}
+
 function normalizeSearch(value: unknown): SearchValues | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -50,10 +58,11 @@ export function parseRecentSearches(snapshot: string | null): SearchValues[] {
 }
 
 // A primitive snapshot stays stable between renders for useSyncExternalStore.
-export function getRecentSearchSnapshot(): string | null {
-  if (typeof window === "undefined") return null;
+export function getRecentSearchSnapshot(userId: number | null): string | null {
+  const key = storageKey(userId);
+  if (typeof window === "undefined" || key === null) return null;
   try {
-    return window.localStorage.getItem(STORAGE_KEY);
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
@@ -63,10 +72,11 @@ export function getServerSearchSnapshot(): null {
   return null;
 }
 
-export function subscribeRecentSearches(onChange: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
+export function subscribeRecentSearches(onChange: () => void, userId: number | null): () => void {
+  const key = storageKey(userId);
+  if (typeof window === "undefined" || key === null) return () => {};
   function onStorage(event: StorageEvent) {
-    if (event.key === STORAGE_KEY || event.key === null) onChange();
+    if (event.key === key || event.key === null) onChange();
   }
   window.addEventListener("storage", onStorage);
   window.addEventListener(CHANGE_EVENT, onChange);
@@ -76,26 +86,28 @@ export function subscribeRecentSearches(onChange: () => void): () => void {
   };
 }
 
-export function rememberRecentSearch(value: SearchValues): void {
-  if (typeof window === "undefined") return;
+export function rememberRecentSearch(value: SearchValues, userId: number | null): void {
+  const key = storageKey(userId);
+  if (typeof window === "undefined" || key === null) return;
   const values = normalizeSearch(value);
   if (!values || Object.keys(validateSearchValues(values)).length > 0) return;
-  const previous = parseRecentSearches(getRecentSearchSnapshot());
+  const previous = parseRecentSearches(getRecentSearchSnapshot(userId));
   const searches = [values, ...previous.filter((item) => searchKey(item) !== searchKey(values))]
     .slice(0, MAX_RECENT_SEARCHES);
   try {
     // Persist only parameters; hotel data and prices must come from a new request.
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(searches));
+    window.localStorage.setItem(key, JSON.stringify(searches));
     window.dispatchEvent(new Event(CHANGE_EVENT));
   } catch {
     // A full or blocked browser store must not prevent a normal hotel search.
   }
 }
 
-export function clearRecentSearches(): void {
-  if (typeof window === "undefined") return;
+export function clearRecentSearches(userId: number | null): void {
+  const key = storageKey(userId);
+  if (typeof window === "undefined" || key === null) return;
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(key);
     window.dispatchEvent(new Event(CHANGE_EVENT));
   } catch {
     // Storage may be disabled by the browser.

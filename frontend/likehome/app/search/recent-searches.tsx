@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import type { SearchValues } from "@/lib/search";
 import {
   clearRecentSearches,
@@ -13,12 +13,16 @@ import {
 export default function RecentSearches({
   onReplay,
   isLoading,
+  userId,
 }: {
   onReplay: (values: SearchValues) => void;
   isLoading: boolean;
+  userId: number | null;
 }) {
+  const subscribe = useCallback((onChange: () => void) => subscribeRecentSearches(onChange, userId), [userId]);
+  const getSnapshot = useCallback(() => getRecentSearchSnapshot(userId), [userId]);
   const snapshot = useSyncExternalStore(
-    subscribeRecentSearches, getRecentSearchSnapshot, getServerSearchSnapshot,
+    subscribe, getSnapshot, getServerSearchSnapshot,
   );
   const searches = parseRecentSearches(snapshot);
   if (searches.length === 0) return null;
@@ -27,7 +31,7 @@ export default function RecentSearches({
     <section className="mt-8 border-b border-slate-200 pb-8" aria-labelledby="recent-searches-heading">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="recent-searches-heading" className="text-xl font-semibold text-slate-950">Recent searches</h2>
-        <button type="button" onClick={clearRecentSearches} className="min-h-11 rounded-md px-3 text-sm font-medium text-teal-700 hover:bg-teal-50">
+        <button type="button" onClick={() => clearRecentSearches(userId)} className="min-h-11 rounded-md px-3 text-sm font-medium text-teal-700 hover:bg-teal-50">
           Clear history
         </button>
       </div>

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/components/AuthProvider";
 import HotelResultCard from "@/components/HotelResultCard";
 import HotelFilters from "@/components/HotelFilters";
 import HotelSortSelector from "@/components/HotelSortSelector";
@@ -22,6 +23,8 @@ import { SearchResultsSkeleton } from "@/components/LoadingSkeletons";
 type SearchStatus = "idle" | "loading" | "error" | "success";
 
 export default function SearchExperience({ initialSearch }: { initialSearch?: SearchValues } = {}) {
+  const { status: authStatus, user } = useAuth();
+  const userId = authStatus === "authenticated" ? user?.user_id ?? null : null;
   const initialSearchStarted = useRef(false);
   const [status, setStatus] = useState<SearchStatus>(() => initialSearch && Object.keys(validateSearchValues(initialSearch)).length === 0 ? "loading" : "idle");
   const [error, setError] = useState<SearchError | null>(null);
@@ -49,7 +52,7 @@ export default function SearchExperience({ initialSearch }: { initialSearch?: Se
     if (pending.current) return;
     pending.current = true;
     lastSearch.current = { values: { ...values }, fresh };
-    rememberRecentSearch(values);
+    if (authStatus !== "restoring") rememberRecentSearch(values, userId);
     const currentRequest = ++requestId.current;
     pendingPage.current = null;
     setStatus("loading");
@@ -75,14 +78,14 @@ export default function SearchExperience({ initialSearch }: { initialSearch?: Se
     } finally {
       pending.current = false;
     }
-  }, [clearFilters]);
+  }, [clearFilters, authStatus, userId]);
 
   useEffect(() => {
-    if (!initialSearch || initialSearchStarted.current || Object.keys(validateSearchValues(initialSearch)).length > 0) return;
+    if (authStatus === "restoring" || !initialSearch || initialSearchStarted.current || Object.keys(validateSearchValues(initialSearch)).length > 0) return;
     initialSearchStarted.current = true;
     pending.current = true;
     lastSearch.current = { values: { ...initialSearch }, fresh: false };
-    rememberRecentSearch(initialSearch);
+    rememberRecentSearch(initialSearch, userId);
     searchHotels(initialSearch).then((response) => {
       setResults(response);
       setSelectedSearch(initialSearch);
@@ -91,7 +94,7 @@ export default function SearchExperience({ initialSearch }: { initialSearch?: Se
       setError(searchError(failure));
       setStatus("error");
     }).finally(() => { pending.current = false; });
-  }, [initialSearch]);
+  }, [initialSearch, authStatus, userId]);
 
   async function loadNextPage() {
     const currentRequest = requestId.current;
@@ -176,7 +179,7 @@ export default function SearchExperience({ initialSearch }: { initialSearch?: Se
         </div>
       </section>
       <div className="site-container pb-12">
-        <RecentSearches onReplay={replaySearch} isLoading={status === "loading"} />
+        {authStatus !== "restoring" && <RecentSearches userId={userId} onReplay={replaySearch} isLoading={status === "loading"} />}
 
         {status === "idle" && (
           <section className="mt-9" aria-labelledby="popular-destinations-heading">

@@ -184,7 +184,7 @@ const RecentSearches = loadComponent("../app/search/recent-searches.tsx", {
   "@/lib/recent-searches": recentSearches,
 });
 
-function searchHarness() {
+function searchHarness(auth = { status: "unauthenticated", user: null }) {
   const { Component: HotelFilters } = filterComponent();
   const slots = [];
   let cursor = 0;
@@ -208,6 +208,7 @@ function searchHarness() {
   const HotelResultCard = () => null;
   const SearchExperience = loadComponent("../app/search/search-experience.tsx", {
     react: hooks,
+    "@/components/AuthProvider": { useAuth: () => auth },
     "@/components/HotelResultCard": { default: HotelResultCard },
     "@/components/HotelFilters": { default: HotelFilters },
     "@/components/HotelSortSelector": { default: HotelSortSelector },
@@ -268,6 +269,20 @@ function searchHarness() {
 }
 
 const search = { destination: " San Jose hotels ", checkIn: "2026-11-01", checkOut: "2026-11-03", guests: "3" };
+
+test("recent-search scope follows account switches and is hidden during session restoration", () => {
+  const auth = { status: "restoring", user: null };
+  const harness = searchHarness(auth);
+  assert.equal(harness.render().recent, undefined);
+  auth.status = "authenticated";
+  auth.user = { user_id: 7 };
+  assert.equal(harness.render().recent.props.userId, 7);
+  auth.user = { user_id: 8 };
+  assert.equal(harness.render().recent.props.userId, 8);
+  auth.status = "unauthenticated";
+  auth.user = null;
+  assert.equal(harness.render().recent.props.userId, null);
+});
 
 async function submitSearch(form, values) {
   // onSearch now starts the async request through a void callback. Let the

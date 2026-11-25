@@ -80,20 +80,22 @@ test("recent-search storage failures never break the search workflow", () => {
   };
   installWindow(failingStorage);
 
-  assert.equal(getRecentSearchSnapshot(), null);
-  assert.doesNotThrow(() => rememberRecentSearch(futureSearch));
-  assert.doesNotThrow(() => clearRecentSearches());
+  assert.equal(getRecentSearchSnapshot(7), null);
+  assert.doesNotThrow(() => rememberRecentSearch(futureSearch, 7));
+  assert.doesNotThrow(() => clearRecentSearches(7));
 });
 
 test("recent-search subscription cleans up storage and custom event listeners", () => {
   const storage = memoryStorage();
   const listeners = installWindow(storage);
   let changes = 0;
-  const unsubscribe = subscribeRecentSearches(() => { changes += 1; });
+  const unsubscribe = subscribeRecentSearches(() => { changes += 1; }, 7);
 
   globalThis.window.emit("storage", { key: "unrelated" });
   assert.equal(changes, 0);
-  globalThis.window.emit("storage", { key: "likehome_recent_searches_v1" });
+  globalThis.window.emit("storage", { key: "likehome_recent_searches_v1_user_8" });
+  assert.equal(changes, 0);
+  globalThis.window.emit("storage", { key: "likehome_recent_searches_v1_user_7" });
   globalThis.window.emit("likehome:recent-searches-changed", {});
   assert.equal(changes, 2);
 
@@ -105,12 +107,40 @@ test("recent-search subscription cleans up storage and custom event listeners", 
 test("recent-search persistence stores only validated search parameters", () => {
   const storage = memoryStorage();
   installWindow(storage);
-  rememberRecentSearch({ ...futureSearch, destination: "  San Jose hotels  ", guests: " 02 " });
+  rememberRecentSearch({ ...futureSearch, destination: "  San Jose hotels  ", guests: " 02 " }, 7);
 
-  const stored = JSON.parse(storage.snapshot().likehome_recent_searches_v1);
+  const stored = JSON.parse(storage.snapshot().likehome_recent_searches_v1_user_7);
   assert.deepEqual(stored, [{ ...futureSearch, destination: "San Jose hotels", guests: "2" }]);
   assert.equal(JSON.stringify(stored).includes("property_token"), false);
   assert.equal(JSON.stringify(stored).includes("price"), false);
+});
+
+test("account switching keeps each user's recent searches and clear action separate", () => {
+  installWindow(memoryStorage());
+  const otherSearch = { ...futureSearch, destination: "Chicago hotels" };
+  rememberRecentSearch(futureSearch, 7);
+  assert.equal(getRecentSearchSnapshot(8), null);
+  rememberRecentSearch(otherSearch, 8);
+  assert.deepEqual(parseRecentSearches(getRecentSearchSnapshot(7)), [futureSearch]);
+  assert.deepEqual(parseRecentSearches(getRecentSearchSnapshot(8)), [otherSearch]);
+
+  clearRecentSearches(8);
+  assert.equal(getRecentSearchSnapshot(8), null);
+  assert.deepEqual(parseRecentSearches(getRecentSearchSnapshot(7)), [futureSearch]);
+});
+
+test("guest and legacy shared history never become an account's history", () => {
+  installWindow(memoryStorage({ likehome_recent_searches_v1: JSON.stringify([futureSearch]) }));
+  assert.equal(getRecentSearchSnapshot(7), null);
+  assert.equal(getRecentSearchSnapshot(null), null);
+
+  rememberRecentSearch(futureSearch, null);
+  assert.deepEqual(parseRecentSearches(getRecentSearchSnapshot(null)), [futureSearch]);
+  assert.equal(getRecentSearchSnapshot(7), null);
+  rememberRecentSearch({ ...futureSearch, destination: "Chicago hotels" }, 7);
+  clearRecentSearches(null);
+  assert.equal(getRecentSearchSnapshot(null), null);
+  assert.equal(parseRecentSearches(getRecentSearchSnapshot(7))[0].destination, "Chicago hotels");
 });
 
 test("hotel search parameters encode user input and preserve fresh pagination controls", () => {
