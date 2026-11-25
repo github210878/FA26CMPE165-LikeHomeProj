@@ -69,3 +69,12 @@ test("paid payment shows success feedback and a booking confirmation link", () =
   assert.match(html, /View confirmation/);
   assert.doesNotMatch(html, /<form/);
 });
+
+test("reward redemption payment explains the points transaction", () => {
+  const html = render(pendingPayment, { redemptionRequested: true });
+
+  assert.match(html, /Reward points/);
+  assert.match(html, /creates a redemption transaction/);
+  assert.match(html, /paid in full with reward points/);
+  assert.doesNotMatch(html, /LikeHome demo payment/);
+});

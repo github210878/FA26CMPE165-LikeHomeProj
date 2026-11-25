@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
 import type { PaymentResponse } from "@/lib/api-types";
 import PaymentForm from "@/components/PaymentForm";
 import { parseReservationId } from "@/lib/booking-confirmation";
-import { getPaymentDetails, payBookingPayment } from "@/lib/bookings";
+import { getPaymentDetails, payBookingPayment, payBookingPaymentWithRewards } from "@/lib/bookings";
 import { createBookingSubmissionGuard } from "@/lib/checkout";
 import { PaymentSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
@@ -29,6 +29,8 @@ export default function PaymentExperience({ paymentId }: { paymentId: string }) 
   const [submitting, setSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const guard = useRef(createBookingSubmissionGuard());
+  const searchParams = useSearchParams();
+  const redemptionRequested = searchParams.get("redeem") === "1";
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -58,7 +60,9 @@ export default function PaymentExperience({ paymentId }: { paymentId: string }) 
     setSubmitting(true);
     setPaymentError("");
     try {
-      const paid = await payBookingPayment(payment.payment_id);
+      const paid = redemptionRequested
+        ? await payBookingPaymentWithRewards(payment.payment_id)
+        : await payBookingPayment(payment.payment_id);
       if (paid.reservation_id !== payment.reservation_id || paid.amount !== payment.amount) {
         throw new Error("Payment result did not match the reviewed payment");
       }
@@ -70,7 +74,9 @@ export default function PaymentExperience({ paymentId }: { paymentId: string }) 
         router.replace("/login");
       } else {
         setPaymentError(error instanceof ApiError && error.status === 409
-          ? "This payment can no longer be completed. Refresh its status or review My Bookings."
+          ? redemptionRequested
+            ? "This stay could not be paid with reward points. You may not have enough points, or the payment status changed. Refresh before retrying."
+            : "This payment can no longer be completed. Refresh its status or review My Bookings."
           : "Payment was not confirmed. Your reservation still exists. Refresh its status before retrying this same payment.");
       }
     } finally {
@@ -98,6 +104,7 @@ export default function PaymentExperience({ paymentId }: { paymentId: string }) 
     <p className="mt-5 text-sm text-slate-600">This is an internal LikeHome demo payment. Completing it records payment in LikeHome; no card or bank is charged.</p>
     <PaymentForm
       payment={payment}
+      redemptionRequested={redemptionRequested}
       submitting={submitting}
       paymentError={paymentError}
       onSubmit={() => void submitPayment(payment)}

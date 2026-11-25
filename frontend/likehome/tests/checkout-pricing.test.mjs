@@ -169,7 +169,7 @@ test("reward redemption control shows balance and opt-in without changing the qu
   assert.equal(redemptionControl.props.checked, false);
   assert.equal(redemptionControl.props.disabled, false);
   assert.match(initial.html, /Available balance: <span class="font-semibold tabular-nums">500 points/);
-  assert.match(initial.html, /Stay eligibility and point deduction are not yet connected/);
+  assert.match(initial.html, /This requested stay redemption is applied when you confirm payment/);
   assert.equal(initial.rows.get("Final booking total"), "$226.80 USD");
 
   redemptionControl.props.onChange({ target: { checked: true } });

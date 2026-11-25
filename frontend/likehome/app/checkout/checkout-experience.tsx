@@ -136,7 +136,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
       });
       if (result.kind === "created") {
         setPhase("success");
-        router.replace(paymentHref(result.booking.payment_id));
+        router.replace(`${paymentHref(result.booking.payment_id)}${redemptionRequested ? "?redeem=1" : ""}`);
       } else {
         setQuote(result.quote);
         setNotice("The quote changed while you were confirming. Review this current quote and confirm again.");
@@ -247,7 +247,7 @@ export default function CheckoutExperience({ selection }: { selection: CheckoutS
         </label>
         {rewardBalance.points === 0 && <p className="mt-2 text-sm text-slate-600">There are no points available to request.</p>}
       </>}
-      <p className="mt-2 text-sm text-slate-600">Stay eligibility and point deduction are not yet connected to checkout, so this selection does not change the quoted total.</p>
+      <p className="mt-2 text-sm text-slate-600">This requested stay redemption is applied when you confirm payment. The payment must be fully covered by your available reward points.</p>
     </section>
     {quote.price_changed === true && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
       The current price has changed since your search. Review the updated quote below.
