@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
-import type { BookingListItem, BookingListResponse, PaymentResponse } from "@/lib/api-types";
+import type { BookingListItem, BookingListResponse, PaymentResponse, ReservationDateChangeResponse } from "@/lib/api-types";
 import { canCancelBooking, cancellationErrorMessage, createCancellationSubmissionGuard, keepBooking, requestCancellation, startCancellation, type CancellationPhase } from "@/lib/booking-cancellation";
 import { cancelBookingAndRefresh, getBookingDetails, getMyBookings, getMyPayments } from "@/lib/bookings";
 import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
@@ -112,6 +112,11 @@ function BookingDetailPanel({ reservationId, reservationStatus }: {
 }
 
 export default function MyBookingsExperience() {
+  const { status, user } = useAuth();
+  return <MyBookingsForSession key={`${status}:${user?.user_id ?? ""}`} />;
+}
+
+function MyBookingsForSession() {
   const router = useRouter();
   const { status, invalidateSession } = useAuth();
   const [load, setLoad] = useState<LoadState>({ kind: "loading" });
@@ -168,6 +173,37 @@ export default function MyBookingsExperience() {
         return;
       }
       setLoad({ kind: "error" });
+    }
+  }
+
+  async function refreshAfterDateChange(result: ReservationDateChangeResponse) {
+    const generation = requestGeneration.current;
+    setExpandedReservationId(null);
+    setLoad((current) => {
+      if (current.kind !== "success") return current;
+      const bookings = current.bookings.map((booking) =>
+        booking.reservation_id === result.reservation_id && booking.status === "confirmed"
+          ? { ...booking, check_in_date: result.check_in_date, check_out_date: result.check_out_date, total_price: result.total_price }
+          : booking);
+      const payments = current.payments.map((payment) =>
+        payment.payment_id === result.payment_id && payment.reservation_id === result.reservation_id &&
+          payment.payment_type === "booking" && payment.payment_status === "pending"
+          ? { ...payment, amount: result.payment_amount } : payment);
+      return bookingListState(bookings, payments, recordedCancellations.current);
+    });
+    try {
+      const [bookings, payments] = await Promise.all([getMyBookings(), getMyPayments()]);
+      if (generation === requestGeneration.current) {
+        setLoad(bookingListState(bookings, payments, recordedCancellations.current));
+      }
+    } catch (error: unknown) {
+      if (generation !== requestGeneration.current) return;
+      if (error instanceof ApiError && error.status === 401) {
+        invalidateSession();
+        router.replace("/login");
+        return;
+      }
+      throw error;
     }
   }
 
@@ -356,19 +392,7 @@ export default function MyBookingsExperience() {
                       reservationId={booking.reservation_id}
                       checkInDate={booking.check_in_date}
                       checkOutDate={booking.check_out_date}
-                      enableConfirmation={false}
-                      onRefreshCurrent={async () => {
-                        const [bookings, payments] = await Promise.all([
-                          getMyBookings(),
-                          getMyPayments(),
-                        ]);
-
-                        setLoad(
-                          bookings.length === 0
-                            ? { kind: "empty" }
-                            : { kind: "success", bookings, payments }
-                        );
-                      }}
+                      onDatesSaved={refreshAfterDateChange}
                     />
                   </div>
                 )}

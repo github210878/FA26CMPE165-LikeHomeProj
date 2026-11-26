@@ -148,7 +148,7 @@ def _snapshot(rows) -> dict:
     }
 
 
-def _validated_quote(value: object, info: HotelRevalidationRequest) -> HotelRevalidationResponse:
+def validate_revalidated_quote(value: object, info: HotelRevalidationRequest) -> HotelRevalidationResponse:
     try:
         raw = value.model_dump() if isinstance(value, HotelRevalidationResponse) else value
         if not isinstance(raw, dict):
@@ -241,7 +241,7 @@ def create_change_quote(
     except ValidationError:
         raise HTTPException(status_code=422, detail="Invalid reservation change review") from None
     try:
-        quote = _validated_quote(hotel_service.revalidate_hotel(info), info)
+        quote = validate_revalidated_quote(hotel_service.revalidate_hotel(info), info)
     except HTTPException:
         raise
     except Exception:

@@ -161,7 +161,7 @@ def get_all_booking_by_user_id(db: Session, user_id: int):
             "room_description": room_type.description,
             "check_in_date": reservation.check_in_date,
             "check_out_date": reservation.check_out_date,
-            "price_per_night": room_type.price_per_night,
+            "price_per_night": (reservation.booking_context or {}).get("nightly_price", room_type.price_per_night),
             "total_price": reservation.total_price,
             "status": reservation.status,
         }
@@ -208,7 +208,7 @@ def get_booking_by_id(db: Session, booking_id: int, user_id: int):
         "room_description": room_type.description,
         "check_in_date": reservation.check_in_date,
         "check_out_date": reservation.check_out_date,
-        "price_per_night": room_type.price_per_night,
+        "price_per_night": (reservation.booking_context or {}).get("nightly_price", room_type.price_per_night),
         "total_price": reservation.total_price,
         "status": reservation.status,
     }
@@ -272,16 +272,16 @@ def get_owned_reservation(db: Session, reservation_id: int, user_id: int):
     )
 
 
+def get_reservation_payments(db: Session, reservation_id: int, *, lock: bool = False):
+    query = db.query(Payment).filter(Payment.reservation_id == reservation_id).order_by(Payment.payment_id)
+    if lock:
+        query = query.populate_existing().with_for_update()
+    return query.all()
+
+
 def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
     """Lock the complete history in ID order; never choose among duplicate charges."""
-    payments = (
-        db.query(Payment)
-        .filter(Payment.reservation_id == reservation_id)
-        .order_by(Payment.payment_id)
-        .populate_existing()
-        .with_for_update()
-        .all()
-    )
+    payments = get_reservation_payments(db, reservation_id, lock=True)
     if not any(payment.payment_id == payment_id for payment in payments):
         return None
     if len(payments) != 1 or payments[0].payment_type != "booking":
@@ -292,24 +292,19 @@ def lock_booking_payment(db: Session, payment_id: int, reservation_id: int):
 
 
 def check_if_user_booked_by_date_range(
-    db: Session, user_id: int, check_in_date: date, check_out_date: date
+    db: Session, user_id: int, check_in_date: date, check_out_date: date,
+    *, excluded_reservation_id: int | None = None,
 ) -> bool:
-    """
-    Check if the user has any booking that overlaps
-    with the given check-in and check-out date range.
-    """
-
-    return (
-        db.query(Reservation)
-        .filter(
-            Reservation.user_id == user_id,
-            Reservation.status != "cancelled",
-            Reservation.check_in_date < check_out_date,
-            Reservation.check_out_date > check_in_date,
-        )
-        .first()
-        is not None
+    """Check the user's half-open stays across all hotels."""
+    query = db.query(Reservation).filter(
+        Reservation.user_id == user_id,
+        Reservation.status != "cancelled",
+        Reservation.check_in_date < check_out_date,
+        Reservation.check_out_date > check_in_date,
     )
+    if excluded_reservation_id is not None:
+        query = query.filter(Reservation.reservation_id != excluded_reservation_id)
+    return query.first() is not None
 
 
 def get_reservation_for_cancellation(db: Session, reservation_id: int, user_id: int):

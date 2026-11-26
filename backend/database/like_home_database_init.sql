@@ -51,6 +51,7 @@ CREATE TABLE
         status ENUM ('confirmed', 'cancelled', 'completed') NOT NULL DEFAULT 'confirmed',
         total_price DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        booking_context JSON NULL,
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE ON UPDATE CASCADE,
         FOREIGN KEY (room_type_id) REFERENCES room_types (room_type_id) ON DELETE NO ACTION ON UPDATE CASCADE,
         CHECK (check_out_date > check_in_date)

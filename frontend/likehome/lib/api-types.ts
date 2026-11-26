@@ -221,6 +221,15 @@ export type ReservationChangeReviewRequest = {
   check_out_date: string;
 };
 
+export type ReservationDateChangeResponse = ReservationChangeReviewRequest & {
+  reservation_id: number;
+  booking_reference: string;
+  payment_id: number;
+  total_price: number;
+  payment_amount: number;
+  changed: boolean;
+};
+
 // A temporary review artifact; receiving it does not confirm a reservation change.
 export type ReservationChangeQuoteResponse = {
   reservation_id: number;

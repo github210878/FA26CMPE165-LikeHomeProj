@@ -48,6 +48,17 @@ class ReservationChangeQuoteRequest(BaseModel):
         return self
 
 
+class ReservationDateChangeResponse(BaseModel):
+    check_in_date: date
+    check_out_date: date
+    reservation_id: int = Field(gt=0, le=MAX_SAFE_ID)
+    payment_id: int = Field(gt=0, le=MAX_SAFE_ID)
+    booking_reference: str = Field(pattern=r"^LH-\d{8,}$")
+    total_price: float = Field(gt=0, le=99999999.99, allow_inf_nan=False)
+    payment_amount: float = Field(gt=0, le=99999999.99, allow_inf_nan=False)
+    changed: bool
+
+
 class ReservationChangeConfirmRequest(ReservationChangeQuoteRequest):
     quote_id: str = Field(strict=True, min_length=1, max_length=MAX_CHANGE_QUOTE_LENGTH)
     accept_quote: bool = Field(strict=True)
