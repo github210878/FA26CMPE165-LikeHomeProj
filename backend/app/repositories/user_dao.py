@@ -29,9 +29,7 @@ def create_user(
     )
 
     db.add(user)
-    db.commit()
-    db.refresh(user)
-
+    db.flush()
     return user
 
 
@@ -76,14 +74,13 @@ def decrease_reward_points(db: Session, user_id: int, amount: int):
     return user
 
 
-def create_user_balance(db: Session, user_id: int):
-    user = db.query(UserBalance).filter(UserBalance.user_id == user_id).first()
-    if user:
-        user_balance = UserBalance(user_id=user_id, balance=0.0)
-        db.add(user_balance)
-        db.commit()
-        db.refresh(user)
-    return user_balance
+def create_user_balance(db: Session, user_id: int) -> UserBalance:
+    balance = db.get(UserBalance, user_id)
+    if balance is None:
+        balance = UserBalance(user_id=user_id, balance=0.0)
+        db.add(balance)
+        db.flush()
+    return balance
 
 
 def get_user_balance(db: Session, user_id: int):

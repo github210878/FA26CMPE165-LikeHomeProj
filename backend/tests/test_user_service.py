@@ -6,6 +6,7 @@ tests.
 """
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from app.schemas.user_schema import (
@@ -51,6 +52,9 @@ def test_register_normalizes_email_hashes_password_and_returns_public_fields(
 
     monkeypatch.setattr(user_service, "PASSWORD_HASHER", FakeHasher())
     monkeypatch.setattr(user_service.user_dao, "create_user", create_user)
+    initialize_balance = Mock()
+    monkeypatch.setattr(user_service.user_dao, "create_user_balance", initialize_balance)
+    db = Mock(spec=user_service.Session)
 
     result = user_service.register_user(
         RegisterUserRequest(
@@ -59,9 +63,11 @@ def test_register_normalizes_email_hashes_password_and_returns_public_fields(
             full_name="Person Example",
             phone="555-0100",
         ),
-        db=object(),
+        db=db,
     )
 
+    initialize_balance.assert_called_once_with(db=db, user_id=7)
+    db.commit.assert_called_once_with()
     assert captured["email"] == "person@example.com"
     assert captured["password"] == "password123"
     assert captured["password_hash"] == "new-hash"
@@ -79,7 +85,7 @@ def test_register_rejects_duplicate_email(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         user_service.register_user(
             RegisterUserRequest(email="person@example.com", password="password123"),
-            db=object(),
+            db=Mock(spec=user_service.Session),
         )
 
     assert exc_info.value.status_code == 409

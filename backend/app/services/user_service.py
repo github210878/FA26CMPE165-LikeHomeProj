@@ -2,6 +2,7 @@
 
 from fastapi import Depends, HTTPException
 from pwdlib import PasswordHash
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from datetime import datetime
@@ -26,29 +27,50 @@ PASSWORD_HASHER = PasswordHash.recommended()
 REWARD_POINT_CONVERSION_RATE = Constants.REWARD_POINTS_PER_DOLLAR
 
 
-def register_user(user_info: RegisterUserRequest, db: Session):
+def _is_duplicate_user_email(error: IntegrityError) -> bool:
+    original = error.orig
+    if getattr(original, "sqlite_errorname", None) == "SQLITE_CONSTRAINT_UNIQUE":
+        return str(original) == "UNIQUE constraint failed: users.email"
+
+    # MySQL reports the unique index name after the duplicate value.
+    if len(original.args) == 2 and original.args[0] == 1062:
+        _, separator, key = str(original.args[1]).rpartition(" for key ")
+        return bool(separator) and key.strip("'`") in {"email", "users.email"}
+    return False
+
+
+def register_user(user_info: RegisterUserRequest, db: Session) -> RegisterUserResponse:
     email = user_info.email.lower()
-    existing_user = user_dao.get_user_by_email(db=db, email=email)
+    try:
+        if user_dao.get_user_by_email(db=db, email=email):
+            raise HTTPException(status_code=409, detail="Email already registered")
 
-    if existing_user:
-        raise HTTPException(status_code=409, detail="Email already registered")
+        password_hash = PASSWORD_HASHER.hash(user_info.password)
+        try:
+            new_user = user_dao.create_user(
+                db=db,
+                email=email,
+                password_hash=password_hash,
+                full_name=user_info.full_name,
+                phone=user_info.phone,
+            )
+        except IntegrityError as error:
+            if _is_duplicate_user_email(error):
+                raise HTTPException(status_code=409, detail="Email already registered") from error
+            raise
 
-    new_user = user_dao.create_user(
-        db=db,
-        email=email,
-        password_hash=PASSWORD_HASHER.hash(user_info.password),
-        full_name=user_info.full_name,
-        phone=user_info.phone,
-    )
-
-    user_dao.create_user_balance(db=db, user_id=new_user.user_id)
-
-    return RegisterUserResponse(
-        user_id=new_user.user_id,
-        email=new_user.email,
-        full_name=new_user.full_name,
-        phone=new_user.phone,
-    )
+        user_dao.create_user_balance(db=db, user_id=new_user.user_id)
+        response = RegisterUserResponse(
+            user_id=new_user.user_id,
+            email=new_user.email,
+            full_name=new_user.full_name,
+            phone=new_user.phone,
+        )
+        db.commit()
+        return response
+    except Exception:
+        db.rollback()
+        raise
 
 
 def login_user(login_info: LoginUserRequest, db: Session):
