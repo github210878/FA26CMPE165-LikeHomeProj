@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { PaymentResponse } from "@/lib/api-types";
+import { bookingConfirmationHref } from "@/lib/booking-confirmation";
 
 type PaymentFormProps = {
   payment: PaymentResponse;
@@ -36,7 +37,7 @@ export default function PaymentForm({
           Payment recorded successfully.
         </p>
         <Link
-          href={`/booking-confirmation/${payment.reservation_id}`}
+          href={bookingConfirmationHref(payment, redemptionRequested)}
           className="inline-flex min-h-11 items-center rounded-md bg-teal-700 px-5 font-semibold text-white hover:bg-teal-800"
         >
           View confirmation

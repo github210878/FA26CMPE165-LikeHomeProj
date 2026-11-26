@@ -7,8 +7,11 @@ import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
 import type { BookingDetailItem, PaymentResponse } from "@/lib/api-types";
 import { parseReservationId } from "@/lib/booking-confirmation";
+import { classifyRedemptionConfirmation } from "@/lib/redemption-confirmation";
+import RedemptionConfirmationState from "@/components/RedemptionConfirmationState";
 import { getBookingDetails, getMyPayments } from "@/lib/bookings";
 import { bookingPaymentForReservation, paymentHref } from "@/lib/payment";
+import { getAccessToken } from "@/lib/token-storage";
 import { BookingDetailsSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
 
 type DetailState =
@@ -19,9 +22,16 @@ type DetailState =
 
 const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
-export default function BookingConfirmationExperience({ reservationId }: { reservationId: string }) {
+type Props = { reservationId: string; redemptionRequested?: boolean };
+
+export default function BookingConfirmationExperience(props: Props) {
+  const { status, user } = useAuth();
+  return <ConfirmationForSession key={`${status}:${user?.user_id ?? ""}:${props.reservationId}`} {...props} />;
+}
+
+function ConfirmationForSession({ reservationId, redemptionRequested = false }: Props) {
   const router = useRouter();
-  const { status, invalidateSession } = useAuth();
+  const { status, user, invalidateSession } = useAuth();
   const [attempt, setAttempt] = useState(0);
   const [detail, setDetail] = useState<DetailState>({ kind: "loading", key: "" });
   const key = `${reservationId}:${attempt}`;
@@ -36,14 +46,16 @@ export default function BookingConfirmationExperience({ reservationId }: { reser
     if (id === null) return;
 
     let active = true;
+    const requestToken = getAccessToken();
+    const isCurrent = () => active && getAccessToken() === requestToken;
     Promise.all([getBookingDetails(id), getMyPayments()]).then(([booking, payments]) => {
-      if (!active) return;
+      if (!isCurrent()) return;
       const payment = bookingPaymentForReservation(payments, id);
       setDetail(booking && booking.reservation_id === id && payment
         ? { kind: "success", key, booking, payment }
         : { kind: "not-found", key });
     }).catch((error: unknown) => {
-      if (!active) return;
+      if (!isCurrent()) return;
       if (error instanceof ApiError && error.status === 401) {
         invalidateSession();
         router.replace("/login");
@@ -54,37 +66,51 @@ export default function BookingConfirmationExperience({ reservationId }: { reser
         : { kind: "error", key });
     });
     return () => { active = false; };
-  }, [status, id, key, invalidateSession, router]);
+  }, [status, user, id, key, invalidateSession, router]);
 
-  if (status === "restoring") {
-    return <SessionLoadingSkeleton />;
+  if (status === "restoring" || (status === "authenticated" && id !== null && detail.key !== key)) {
+    if (redemptionRequested) {
+      return <div className="mt-8"><RedemptionConfirmationState state={{ kind: "loading" }} /></div>;
+    }
+    return status === "restoring" ? <SessionLoadingSkeleton /> : <BookingDetailsSkeleton />;
   }
   if (status === "unauthenticated") {
-    return <p role="status" className="mt-8 text-slate-700">Taking you to sign in…</p>;
+    return redemptionRequested
+      ? <div className="mt-8"><RedemptionConfirmationState state={{ kind: "authentication-required" }} /></div>
+      : <p role="status" className="mt-8 text-slate-700">Taking you to sign in…</p>;
   }
 
-  const current = id === null ? { kind: "not-found" as const } : detail.key === key ? detail : { kind: "loading" as const };
-  if (current.kind === "loading") {
-    return <BookingDetailsSkeleton />;
+  const current = id === null ? { kind: "not-found" as const } : detail;
+  const refresh = () => setAttempt((value) => value + 1);
+  const redemption = current.kind === "success"
+    ? classifyRedemptionConfirmation({ requested: redemptionRequested, booking: current.booking, payment: current.payment })
+    : redemptionRequested
+      ? current.kind === "error" ? { kind: "uncertain" as const } : { kind: "unavailable" as const }
+      : null;
+
+  if (redemption?.kind === "confirmed") {
+    return <div className="mt-8"><RedemptionConfirmationState state={redemption} /></div>;
   }
 
   return <div className="mt-8 space-y-6">
-    {current.kind === "not-found" && <div role="alert" className="rounded-lg border border-slate-200 bg-white p-6 text-slate-800">
+    {redemption && <RedemptionConfirmationState state={redemption} onRefresh={refresh} />}
+    {current.kind === "not-found" && !redemptionRequested && <div role="alert" className="rounded-lg border border-slate-200 bg-white p-6 text-slate-800">
       This booking could not be found.
     </div>}
-    {current.kind === "error" && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-900">
+    {current.kind === "error" && !redemptionRequested && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-900">
       <p>We couldn&apos;t load your booking details right now. Your reservation may still be available.</p>
-      <button type="button" onClick={() => setAttempt((value) => value + 1)}
+      <button type="button" onClick={refresh}
         className="mt-4 min-h-11 font-medium text-teal-700 underline">Retry</button>
     </div>}
     {current.kind === "success" && <div className="rounded-xl border border-teal-200 bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-2xl font-semibold text-slate-950">
         {current.booking.status === "confirmed" && current.payment.payment_status === "paid" ? "Booking payment recorded" : "Reservation details"}
       </h2>
-      {current.booking.status === "confirmed" && current.payment.payment_status === "paid" && <p className="mt-2 text-slate-700">Your reservation and LikeHome demo payment are recorded. No external card or bank charge occurred.</p>}
+      {current.booking.status === "confirmed" && current.payment.payment_status === "paid" && <p className="mt-2 text-slate-700">Your reservation and payment are recorded. No external card or bank charge occurred.</p>}
       {current.booking.status === "confirmed" && current.payment.payment_status === "pending" && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
         <p>Your reservation exists, but payment is still pending.</p>
-        <Link href={paymentHref(current.payment.payment_id)} className="mt-2 inline-block font-medium text-teal-700 underline">Complete payment</Link>
+        {!redemptionRequested &&
+          <Link href={paymentHref(current.payment.payment_id)} className="mt-2 inline-block font-medium text-teal-700 underline">Complete payment</Link>}
       </div>}
       <dl className="mt-6 grid gap-4 text-sm text-slate-700 sm:grid-cols-2">
         <div><dt className="font-medium text-slate-950">Reservation ID</dt><dd>{current.booking.reservation_id}</dd></div>
