@@ -334,7 +334,7 @@ test("module import alone starts no hook, timer, network request, storage write,
   assert.equal(typeof component, "function"); assert.equal(events.size, 0);
 });
 
-test("only ReservationChangeFlow directly imports confirmation and confirmation uses its adapter", () => {
+test("legacy confirmation is disconnected from the active flow and uses only its confirmation adapter", () => {
   const references = [];
   function inspect(directory) {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -345,10 +345,7 @@ test("only ReservationChangeFlow directly imports confirmation and confirmation 
     }
   }
   for (const directory of ["app", "components", "lib", "constants"]) inspect(new URL(`../${directory}/`, import.meta.url));
-  assert.deepEqual(
-      references.map((path) => path.split("/").pop()),
-      ["ReservationChangeFlow.tsx"]
-  );
+  assert.deepEqual(references, []);
   const source = readFileSync(new URL("../components/ReservationChangeConfirmation.tsx", import.meta.url), "utf8");
   const parsed = ts.createSourceFile("ReservationChangeConfirmation.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const adapters = parsed.statements.filter((node) => ts.isImportDeclaration(node) && node.moduleSpecifier.text === "@/lib/bookings")

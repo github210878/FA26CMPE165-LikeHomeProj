@@ -4,10 +4,12 @@ const API_BASE_URL = (
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(status: number) {
+  constructor(status: number, code?: string) {
     super(`API request failed with status ${status}`);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -15,7 +17,16 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, init);
 
   if (!response.ok) {
-    throw new ApiError(response.status);
+    let failure = null;
+    if (response.status === 409) {
+      try {
+        failure = await response.json();
+      } catch {
+        // A conflict may carry no structured error body.
+      }
+    }
+    const code = failure?.detail?.code;
+    throw new ApiError(response.status, typeof code === "string" ? code : undefined);
   }
 
   try {

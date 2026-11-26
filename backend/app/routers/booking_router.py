@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
 
 from app.config.database import get_db
@@ -12,7 +12,10 @@ from app.schemas.booking_schema import (
 )
 from app.schemas.reservation_change_payment_schema import ReservationFinancialSummary
 from app.schemas.reservation_change_schema import (
+    MAX_SAFE_ID,
+    ReservationChangeQuoteRequest,
     ReservationChangeQuoteResponse,
+    ReservationDateChangeResponse,
     ReservationChangeReviewRequest,
     ReservationChangeReceiptRequest,
     ReservationChangeReceiptResponse,
@@ -89,6 +92,16 @@ def confirm_reservation_change(
         status_code=503,
         detail="Reservation changes are not available yet.",
     )
+
+
+@router.post("/{reservation_id}/change-dates", response_model=ReservationDateChangeResponse)
+def change_booking_dates(
+    dates: ReservationChangeQuoteRequest,
+    reservation_id: int = Path(gt=0, le=MAX_SAFE_ID),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return booking_service.change_booking_dates(db, reservation_id, dates, user_id)
 
 
 @router.post("/create", response_model=BookingResponse)

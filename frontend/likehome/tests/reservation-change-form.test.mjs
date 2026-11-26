@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { afterEach, beforeEach, test } from "node:test";
 import { cloneElement, createElement } from "react";
@@ -9,7 +9,7 @@ import ts from "typescript";
 import { ApiError } from "../lib/api.ts";
 import * as cancellation from "../lib/booking-cancellation.ts";
 import { bookingPaymentForReservation, paymentHref } from "../lib/payment.ts";
-import { getReservationChangeQuote } from "../lib/bookings.ts";
+import { changeReservationDates } from "../lib/bookings.ts";
 
 const require = createRequire(import.meta.url);
 const tick = () => new Promise(setImmediate);
@@ -51,11 +51,11 @@ afterEach(() => {
   for (const [key, value] of Object.entries(originals)) globalThis[key] = value;
   for (const method of consoleMethods) console[method] = originalConsole[method];
   assert.deepEqual(liveFetches, []);
-  assert.deepEqual(persistence, [], "quotes and auth secrets must not be persisted by the form");
-  assert.deepEqual(logs, [], "quotes and auth secrets must not be logged");
+  assert.deepEqual(persistence, [], "booking and auth data must not be persisted by the form");
+  assert.deepEqual(logs, [], "booking and auth data must not be logged");
   for (const h of harnesses) {
     assert.equal(h.calls.some((call) => ["confirmation", "settlement", "payment"].includes(call.operation)), false);
-    if (!h.page) assert.ok(h.calls.every((call) => ["quote", "invalidate"].includes(call.operation)));
+    if (!h.page) assert.ok(h.calls.every((call) => ["save", "invalidate"].includes(call.operation)));
     assert.doesNotMatch(JSON.stringify(h.navigation), /synthetic-signed-secret|synthetic-auth-secret|synthetic-property-/);
   }
 });
@@ -87,16 +87,12 @@ function summary(id = 42) {
   };
 }
 
-function quote(id = 42, request = {}, expires = Date.now() + 600000) {
+const newDates = { check_in_date: "2096-03-02", check_out_date: "2096-03-04" };
+
+function saved(id, request) {
   return {
-    reservation_id: id, quote_id: `synthetic-signed-secret-${id}`, expires_at: new Date(expires).toISOString(),
-    quote: { property_token: `synthetic-property-${id}`, hotel_name: `Quoted Hotel ${id}`,
-      check_in_date: request.check_in_date ?? "2096-02-28", check_out_date: request.check_out_date ?? "2096-03-01",
-      adults: request.adults ?? 2, children: request.children ?? 1, currency: "USD", number_of_nights: 2,
-      availability: "available", rate_rule: "lowest_eligible_provider_base_total", source: "Synthetic Provider",
-      guest_capacity: 3, current_price_per_night: 125.5, provider_base_total: 251,
-      provider_total_with_taxes_fees: 275, likehome_reservation_total: 263.55, likehome_payment_amount: 284.63,
-      price_changed: null },
+    ...request, reservation_id: id, booking_reference: "LH-" + String(id).padStart(8, "0"),
+    payment_id: id + 100, total_price: 200, payment_amount: 216, changed: true,
   };
 }
 
@@ -127,9 +123,10 @@ function loadComponent(path, imports, clock) {
 // not exercise a DOM, Next's chunk loader, native form validation, or React/browser
 // scheduling. Synthetic timers let us check expiry callbacks and cleanup precisely.
 function harness({ page = false, status = "authenticated", session, pendingPayment = false, records = bookings,
-  readQuote = async (id, request) => quote(id, request) } = {}) {
+  saveDates = async (id, request) => saved(id, request) } = {}) {
   const instances = new Map(), timers = new Map();
   const calls = [], navigation = [], writes = [];
+  let currentBookings = records, currentPayments;
   let current, pendingEffects, seen, disposed = false, time = Date.now(), timerId = 0;
   const clock = {
     Date: class extends Date { static now() { return time; } },
@@ -163,13 +160,17 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
     },
   };
   const readers = {
-    getReservationChangeQuote: (id, request) => { calls.push({ operation: "quote", id, request }); return readQuote(id, request); },
+    changeReservationDates: (id, request) => { calls.push({ operation: "save", id, request }); return saveDates(id, request); },
     getReservationFinancialSummary: async (id) => { calls.push({ operation: "summary", id }); return summary(id); },
-    getMyBookings: async () => { calls.push({ operation: "bookings" }); return records; },
-    getMyPayments: async () => { calls.push({ operation: "payments" }); return records.map((b) => ({
+    getMyBookings: async () => { calls.push({ operation: "bookings" }); return currentBookings; },
+    getMyPayments: async () => { calls.push({ operation: "payments" }); return currentPayments ?? currentBookings.map((b) => ({
       ...summary(b.reservation_id).original_booking_payment, payment_status: pendingPayment ? "pending" : "paid",
     })); },
     getBookingDetails: async (id) => { calls.push({ operation: "details", id }); return records.find((b) => b.reservation_id === id); },
+    getCancellationCharge: async (id) => {
+      calls.push({ operation: "cancellation-charge", id });
+      return { cancellation_charge: 20 };
+    },
     cancelBookingAndRefresh: async (id, onCancelled) => {
       calls.push({ operation: "cancellation", id });
       onCancelled({ reservation_id: id, status: "cancelled" });
@@ -200,15 +201,13 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
   imports["@/components/CancelBookingDialog"] = {
     default: loadComponent("../components/CancelBookingDialog.tsx", imports, clock),
   };
+  const Form = loadComponent("../components/ReservationChangeForm.tsx", imports, clock);
   const Flow = loadComponent(
       "../components/ReservationChangeFlow.tsx",
       {
         ...imports,
         "@/components/ReservationChangeForm": {
-          default: () => null,
-        },
-        "@/components/ReservationChangeConfirmation": {
-          default: () => null,
+          default: Form,
         },
       },
       clock
@@ -217,9 +216,6 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
   imports["@/components/ReservationChangeFlow"] = {
     default: Flow,
   };
-  const Form = loadComponent("../components/ReservationChangeForm.tsx", imports, clock);
-  // Only this synthetic boundary mounts the dormant form. The actual current
-  // booking page is tested separately and must never acquire a form import.
   function ReviewFixture({ visible = true, ...formProps }) {
     return visible ? createElement(Form, formProps) : null;
   }
@@ -251,6 +247,7 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
   }
   const h = {
     page, calls, navigation, auth, writes, timers,
+    refreshTo(bookings, payments) { currentBookings = bookings; currentPayments = payments; },
     now: () => time,
     jump(ms) { time += ms; },
     advance(ms) {
@@ -294,434 +291,282 @@ function harness({ page = false, status = "authenticated", session, pendingPayme
   return h;
 }
 
-function fill(h) {
-  for (const [name, value] of Object.entries({ check_in_date: "2096-02-28", check_out_date: "2096-03-01" })) h.edit(name, value);
-  return h.render();
-}
 
-async function openPage(h, index = 0) {
-  h.render(); await tick();
-  h.render().buttons("View details")[index].props.onClick();
-  h.render(); await tick(); h.render(); await tick();
-  return h.render();
-}
+const saveCalls = (h) => h.calls.filter((call) => call.operation === "save");
 
-const quoteCalls = (h) => h.calls.filter((c) => c.operation === "quote");
-
-test("module import alone runs no hook, quote request, timer, storage write, or navigation", () => {
-  const unexpected = () => { assert.fail("import must not start component work"); };
-  const component = loadComponent("../components/ReservationChangeForm.tsx", {
-    react: { useEffect: unexpected, useRef: unexpected, useState: unexpected },
-    "next/navigation": { useRouter: unexpected },
-    "@/components/AuthProvider": { useAuth: unexpected },
-    "@/lib/api": { ApiError }, "@/lib/bookings": { getReservationChangeQuote: unexpected },
-  }, { Date, setTimeout: unexpected, clearTimeout: unexpected });
-  assert.equal(typeof component, "function");
-  assert.equal(events.size, 0);
-});
-
-
-test("only ReservationChangeFlow directly imports the reservation change form and the form uses the quote adapter", () => {
-  const references = [];
-  function inspect(directory) {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const url = new URL(entry.name + (entry.isDirectory() ? "/" : ""), directory);
-      if (entry.isDirectory()) inspect(url);
-      else if (/\.(?:[cm]?[jt]sx?)$/.test(entry.name) && entry.name !== "ReservationChangeForm.tsx" &&
-        /ReservationChangeForm|reservation-change-form/.test(readFileSync(url, "utf8"))) references.push(url.pathname);
-    }
-  }
-  for (const directory of ["app", "components", "lib", "constants"]) inspect(new URL(`../${directory}/`, import.meta.url));
-  assert.deepEqual(
-      references.map((path) => path.split("/").pop()),
-      ["ReservationChangeFlow.tsx"]
-  );
-  const source = readFileSync(new URL("../components/ReservationChangeForm.tsx", import.meta.url), "utf8");
-  const parsed = ts.createSourceFile("ReservationChangeForm.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const adapters = parsed.statements.filter((node) => ts.isImportDeclaration(node) && node.moduleSpecifier.text === "@/lib/bookings")
-    .flatMap((node) => node.importClause.namedBindings.elements.map((name) => name.name.text));
-  assert.deepEqual(adapters, ["getReservationChangeQuote"]);
-  assert.doesNotMatch(source, /confirmReservationChange|payReservationChangeAdjustment|ConfirmationReceipt|onRefreshCurrent/);
-});
-
-test("synthetic authenticated mounting, rerenders, focus, and visibility never submit automatically", async () => {
+test("prefills exactly two labeled date inputs and retains the responsive form layout", () => {
   const h = harness();
-  for (let i = 0; i < 3; i++) {
-    const view = h.render();
-    assert.doesNotMatch(view.html, /Price quote \(USD\)|Quoted Hotel|role="alert"/);
-    h.fire("window", "focus"); h.fire("document", "visibilitychange");
-    await tick();
-  }
-  assert.deepEqual(h.calls, []);
-  assert.equal(h.timers.size, 0);
-});
-
-test("current booking details keep the quote form dormant for every reservation status", async (t) => {
-  for (const status of ["confirmed", "cancelled", "completed"]) {
-    await t.test(status, async () => {
-      const h = harness({ page: true, records: [{ ...bookings[0], status }] });
-      h.render(); await tick();
-      assert.equal(h.render().buttons("Review a reservation change").length, 0);
-      const view = await openPage(h);
-      assert.equal(view.buttons("Review a reservation change").length, 0);
-      assert.equal(quoteCalls(h).length, 0);
-      assert.match(view.html, /Booking details|Synthetic property description/);
-      assert.doesNotMatch(view.html, /Request a change quote|Financial summary|Price quote \(USD\)/);
-      assert.deepEqual(h.calls.map((c) => c.operation), ["bookings", "payments", "details"]);
-    });
-  }
-});
-
-test("controlled labelled fields show only the two valid booking dates", () => {
-  const h = harness(); let view = h.render();
+  const view = h.render();
   assert.equal(view.input("check_in_date").props.value, "2096-02-28");
   assert.equal(view.input("check_out_date").props.value, "2096-03-01");
-  for (const name of ["q", "adults", "children"]) assert.equal(view.input(name), undefined);
-  assert.match(view.html, /Your hotel and guest details stay the same/);
-  assert.equal(view.nodes.filter((n) => n.type === "label").length, 2);
-  for (const name of ["check_in_date", "check_out_date"]) assert.equal(view.input(name).props.type, "date");
-  view = h.render({ reservationId: 43, checkInDate: "2095-02-29", checkOutDate: "nonsense" });
-  assert.equal(view.input("check_in_date").props.value, ""); assert.equal(view.input("check_out_date").props.value, "");
-  assert.equal(quoteCalls(h).length, 0);
+  const inputs = view.nodes.filter((node) => node.type === "input");
+  assert.deepEqual(inputs.map((input) => input.props.name), ["check_in_date", "check_out_date"]);
+  assert.ok(inputs.every((input) => input.props.type === "date" && input.props.required));
+  assert.equal(view.nodes.filter((node) => node.type === "label").length, 2);
+  assert.match(view.html, /sm:grid-cols-2/);
+  assert.match(view.buttons("Save reservation changes")[0].props.className, /min-h-11/);
+  assert.doesNotMatch(view.html, /Request a quote|Adults|Children|Destination/);
+  assert.equal(saveCalls(h).length, 0);
 });
 
-test("explicit submission sends only the two dates with no invented booking context", async () => {
-  const h = harness(); fill(h);
-  assert.equal(quoteCalls(h).length, 0);
+test("one explicit save uses only dates and renders committed dates and amounts", async () => {
+  const h = harness();
+  h.render();
+  h.edit("check_in_date", newDates.check_in_date);
+  h.edit("check_out_date", newDates.check_out_date);
   const view = h.submit();
   assert.equal(view.form.props["aria-busy"], true);
-  assert.match(view.html, /Requesting price quote/);
-  assert.deepEqual(quoteCalls(h), [{ operation: "quote", id: 42, request: {
-    check_in_date: "2096-02-28", check_out_date: "2096-03-01",
-  } }]);
-  await tick(); h.render();
-  assert.deepEqual(h.calls.map((c) => c.operation), ["quote"]);
+  h.submit();
+  assert.deepEqual(saveCalls(h), [{ operation: "save", id: 42, request: newDates }]);
+  assert.doesNotMatch(view.html, /Reservation dates saved/);
+  await tick();
+  assert.match(h.render().html, /Reservation dates saved[\s\S]*LH-00000042[\s\S]*2096-03-04[\s\S]*\$200.00[\s\S]*\$216.00/);
+});
+
+test("invalid calendar, past or non-increasing dates cannot reach the API", async () => {
+  for (const date of ["2000-01-01", "2096-02-30", "2096-03-01", "2096-3-01"]) {
+    const h = harness({ saveDates: changeReservationDates });
+    h.render();
+    h.edit("check_in_date", date);
+    h.submit();
+    await tick();
+    const view = h.render();
+    assert.equal(view.input("check_in_date").props.value, date);
+    assert.match(view.html, /role="alert"/);
+    assert.match(view.html, /Enter valid check-in and check-out dates/);
+    assert.match(view.form.props["aria-describedby"], /change-dates-error-42/);
+  }
+});
+
+test("active 401 redirects once while an unmounted save ignores the response", async () => {
+  const first = harness({ saveDates: async () => { throw new ApiError(401); } });
+  first.render(); first.submit(); await tick();
+  assert.deepEqual(first.navigation, ["/login"]);
+  const pending = deferred();
+  const next = harness({ saveDates: () => pending.promise });
+  next.render(); next.submit(); next.show(false);
+  pending.reject(new ApiError(401));
+  await tick();
+  assert.deepEqual(next.navigation, []);
+  assert.equal(next.writes.some((entry) => !entry.mounted), false);
+});
+
+test("MyBookings preserves original booking after a rejected save and refreshes after committed save", async () => {
+  const pending = deferred();
+  const h = harness({ page: true, pendingPayment: true, saveDates: () => pending.promise });
+  h.render(); await tick();
+  h.render().buttons("Change Booking")[0].props.onClick();
+  h.edit("check_in_date", newDates.check_in_date);
+  h.edit("check_out_date", newDates.check_out_date);
+  h.submit();
+  assert.match(h.render().html, /2096-02-28/);
+
+  const result = saved(42, newDates);
+  const updated = [{ ...bookings[0], ...newDates, total_price: result.total_price }, ...bookings.slice(1)];
+  h.refreshTo(updated, updated.map((booking) => ({
+    ...summary(booking.reservation_id).original_booking_payment,
+    amount: booking.reservation_id === 42 ? result.payment_amount : 226.8,
+    payment_status: "pending",
+  })));
+  pending.resolve(result);
+  await tick();
+  const view = h.render();
+  assert.match(view.html, /Reservation dates saved/);
+  assert.match(view.html, /<time dateTime="2096-03-02">2096-03-02<\/time>/);
+  assert.equal(h.calls.filter((call) => call.operation === "bookings").length, 2);
+  assert.equal(h.calls.filter((call) => call.operation === "payments").length, 2);
+  assert.equal(view.buttons("Cancel booking").length, 2);
+  assert.match(view.html, /href="\/payment\/142"/);
+  view.buttons("Cancel booking")[0].props.onClick();
+  h.render(); await tick();
+  const dialog = h.render();
+  assert.match(dialog.html, /Cancel this booking[?]/);
+  assert.match(dialog.html, /Cancellation charge: <strong>20.00 USD/);
+  dialog.buttons("Keep booking")[0].props.onClick();
+  assert.doesNotMatch(h.render().html, /Cancel this booking[?]/);
+  assert.equal(h.calls.filter((call) => call.operation === "cancellation").length, 0);
+
+  const rejected = harness({ page: true, saveDates: async () => { throw new ApiError(409, "dates_overlap"); } });
+  rejected.render(); await tick();
+  rejected.render().buttons("Change Booking")[0].props.onClick();
+  rejected.edit("check_in_date", newDates.check_in_date);
+  rejected.edit("check_out_date", newDates.check_out_date);
+  rejected.submit(); await tick();
+  const original = rejected.render();
+  assert.match(original.html, /These dates overlap with another reservation. Please select different dates./);
+  assert.match(original.html, /<time dateTime="2096-02-28T00:00:00">2096-02-28<\/time>/);
+  assert.doesNotMatch(original.html, /Reservation dates saved/);
+  assert.equal(rejected.calls.filter((call) => call.operation === "bookings").length, 1);
+});
+
+test("refresh failure preserves the committed acknowledgement without another save", async () => {
+  const h = harness();
+  h.render({ reservationId: 42, checkInDate: newDates.check_in_date, checkOutDate: newDates.check_out_date,
+    onDatesSaved: async () => { throw new Error("read failed"); } });
+  h.submit();
+  await tick();
+  const view = h.render();
+  assert.match(view.html, /Reservation dates saved/);
+  assert.match(view.html, /Reload MyBookings to refresh/);
+  assert.equal(saveCalls(h).length, 1);
+});
+
+test("mount, rerender, focus and visibility changes never submit dates", async () => {
+  const h = harness();
+  h.render();
+  h.fire("window", "focus");
+  h.fire("document", "visibilitychange");
+  h.render();
+  await tick();
+  assert.deepEqual(h.calls, []);
   assert.deepEqual(h.navigation, []);
 });
 
-test("date validation errors are described without asking for removed fields", async () => {
-  const h = harness({ readQuote: async () => { throw new Error("Invalid reservation change review"); } });
-  h.render(); h.submit(); await tick();
-  const request = quoteCalls(h)[0].request;
-  assert.deepEqual(Object.keys(request), ["check_in_date", "check_out_date"]);
-  const view = h.render();
-  assert.match(view.html, /role="alert"/);
-  assert.match(view.html, /Check your new check-in and check-out dates/);
-  assert.match(view.form.props["aria-describedby"], /change-review-error-42/);
-});
-
-test("invalid dates are rejected by the adapter without a network call", async (t) => {
-  const cases = [
-    ["blank check-in", "check_in_date", ""], ["malformed check-in", "check_in_date", "2096-2-28"],
-    ["impossible date", "check_in_date", "2096-02-30"], ["non-leap date", "check_in_date", "2095-02-29"],
-    ["past date", "check_in_date", "2000-01-01"], ["blank check-out", "check_out_date", ""],
-    ["impossible check-out", "check_out_date", "2096-04-31"],
-    ["equal dates", "check_out_date", "2096-02-28"], ["reversed dates", "check_out_date", "2096-02-27"],
-  ];
-  for (const [label, name, value] of cases) {
-    await t.test(label, async () => {
-      const h = harness({ readQuote: getReservationChangeQuote });
-      fill(h); h.edit(name, value); h.submit(); await tick();
-      const view = h.render();
-      assert.match(view.html, /role="alert"/);
-      assert.match(view.html, /Check your new check-in and check-out dates/);
-      assert.doesNotMatch(view.html, /Price quote \(USD\)|Quoted Hotel/);
-      assert.equal(view.input(name).props.value, value);
-      assert.equal(quoteCalls(h).length, 1);
-      assert.equal(liveFetches.length, 0);
-      assert.equal(h.auth.status, "authenticated");
-      assert.deepEqual(h.navigation, []);
-    });
-  }
-});
-
-test("quote preview displays guest counts returned by the server without requesting them", async () => {
-  const h = harness({ readQuote: async () => quote(42, { adults: 3, children: 0 }) });
-  fill(h); h.submit(); await tick();
-  assert.equal(quoteCalls(h)[0].request.children, undefined);
-  assert.equal(quoteCalls(h)[0].request.adults, undefined);
-  assert.equal(h.render().rows.get("Children"), "0");
-  assert.equal(h.render().rows.get("Adults"), "3");
-});
-
-test("the existing adapter's missing-authentication error redirects safely before fetch", async () => {
-  const h = harness({ readQuote: getReservationChangeQuote });
-  fill(h); h.submit(); await tick();
-  assert.equal(h.auth.status, "unauthenticated");
-  assert.equal(h.calls.filter((call) => call.operation === "invalidate").length, 1);
-  assert.deepEqual(h.navigation, ["/login"]);
-  assert.equal(h.render().html, "");
-  assert.equal(liveFetches.length, 0);
-});
-
-test("blocks same-tick duplicate submits, disables pending fields, and keeps a clear loading state", async () => {
-  const pending = deferred(); const h = harness({ readQuote: () => pending.promise });
-  const form = fill(h).form;
-  form.props.onSubmit({ preventDefault() {} }); form.props.onSubmit({ preventDefault() {} });
-  let view = h.render();
-  assert.equal(quoteCalls(h).length, 1);
-  assert.equal(view.buttons("Requesting quote…")[0].props.disabled, true);
-  assert.equal(view.nodes.find((n) => n.type === "fieldset").props.disabled, true);
-  h.edit("check_in_date", "2096-04-01");
-  assert.equal(h.render().input("check_in_date").props.value, "2096-02-28");
-  h.submit(); assert.equal(quoteCalls(h).length, 1);
-  pending.resolve(quote()); await tick(); view = h.render();
-  assert.equal(view.form.props["aria-busy"], false);
-  assert.equal(view.nodes.find((n) => n.type === "fieldset").props.disabled, false);
-});
-
-test("preview shows validated hotel, dates, guests, independent USD prices, and aware expiry without mutation controls", async () => {
-  const h = harness(); fill(h); h.submit(); await tick(); const view = h.render();
-  assert.equal(view.rows.get("Hotel"), "Quoted Hotel 42");
-  assert.equal(view.rows.get("Proposed check-in"), "2096-02-28");
-  assert.equal(view.rows.get("Proposed check-out"), "2096-03-01");
-  assert.equal(view.rows.get("Number of nights"), "2");
-  assert.equal(view.rows.get("Adults"), "2"); assert.equal(view.rows.get("Children"), "1");
-  assert.equal(view.rows.get("Current nightly price"), "$125.50");
-  assert.equal(view.rows.get("Proposed reservation total (before tax)"), "$263.55");
-  assert.equal(view.rows.get("LikeHome payment amount (including tax)"), "$284.63");
-  assert.ok(view.nodes.find((n) => n.type === "time").props.dateTime.endsWith("Z"));
-  assert.match(view.html, /This is a price quote only\. Your reservation has not been changed\./);
-  assert.doesNotMatch(view.html, /refund|additional charge|difference|Confirm change|Settle|Pay adjustment/i);
-  assert.equal(view.nodes.filter((n) => n.type === "button").length, 1);
-  assert.deepEqual(h.calls.map((c) => c.operation), ["quote"]);
-});
-
-test("editing any review field immediately discards the old preview and requires another explicit request", async (t) => {
-  for (const [name, value] of Object.entries({ check_in_date: "2096-02-29", check_out_date: "2096-03-02" })) {
-    await t.test(name, async () => {
-      const h = harness(); fill(h); h.submit(); await tick(); h.render();
-      assert.equal(h.timers.size, 1);
-      let view = h.edit(name, value);
-      assert.doesNotMatch(view.html, /Price quote \(USD\)|Quoted Hotel|284\.63/);
-      assert.equal(h.timers.size, 0); assert.equal(quoteCalls(h).length, 1);
-      h.submit(); await tick(); view = h.render();
-      assert.equal(quoteCalls(h).length, 2);
-      assert.equal(quoteCalls(h)[1].request[name], value);
-      assert.match(view.html, /Price quote \(USD\)/);
-    });
-  }
-});
-
-test("HTTP and transport errors use safe messages without automatic retry or losing form values", async (t) => {
-  const cases = [
-    [new ApiError(400), /overlap another booking/], [new ApiError(404), /unavailable or cannot be accessed/],
-    [new ApiError(409), /has changed or cannot support/], [new ApiError(422), /Check your new check-in and check-out dates/],
-    [new ApiError(502), /provider is unavailable/], [new ApiError(504), /took too long/],
-    [new ApiError(500), /could not request a price quote/], [new TypeError("private network secret"), /valid, current price quote/],
-    [new Error("Reservation change quote returned an unexpected response"), /valid, current price quote/],
-    [new Error("API returned an invalid JSON response"), /valid, current price quote/],
-  ];
-  for (const [error, message] of cases) {
-    await t.test(error instanceof ApiError ? String(error.status) : error.message, async () => {
-      const h = harness({ readQuote: async () => { throw error; } });
-      fill(h); h.submit(); await tick(); let view = h.render();
-      assert.match(view.html, message); assert.match(view.html, /role="alert"/);
-      assert.doesNotMatch(view.html, /private network secret|API request failed|unexpected response|invalid JSON/);
-      assert.equal(view.input("check_in_date").props.value, "2096-02-28");
-      h.render(); await tick(); view = h.render();
-      assert.equal(quoteCalls(h).length, 1); assert.equal(h.auth.status, "authenticated");
-      assert.equal(h.navigation.length, 0);
-      assert.equal(view.nodes.filter((n) => n.type === "button" && !n.props.disabled).length, 1);
-    });
-  }
-});
-
-test("explicit retry makes one fresh quote request and suppresses duplicate retries", async () => {
-  const pending = deferred(); let attempts = 0;
-  const h = harness({ readQuote: () => ++attempts === 1 ? Promise.reject(new ApiError(504)) : pending.promise });
-  fill(h); h.submit(); await tick(); let view = h.render();
-  assert.equal(view.buttons("Retry quote").length, 1);
-  const form = view.form; form.props.onSubmit({ preventDefault() {} }); form.props.onSubmit({ preventDefault() {} });
-  view = h.render(); assert.match(view.html, /Requesting price quote/);
-  assert.equal(quoteCalls(h).length, 2);
-  pending.resolve(quote()); await tick(); assert.match(h.render().html, /Price quote \(USD\)/);
-});
-
-test("already expired or malformed expirations never become a valid preview even with a mocked adapter", async (t) => {
-  for (const expires_at of ["2000-01-01T00:00:00Z", "not a timestamp"]) {
-    await t.test(expires_at, async () => {
-      const h = harness({ readQuote: async () => ({ ...quote(), expires_at }) });
-      fill(h); h.submit(); await tick(); const view = h.render();
-      assert.match(view.html, /valid, current price quote/);
-      assert.doesNotMatch(view.html, /Quoted Hotel|284\.63/);
-      assert.equal(h.timers.size, 0); assert.equal(quoteCalls(h).length, 1);
-    });
-  }
-});
-
-test("expiry timer removes the active price preview and offers a fresh explicit request without auto-fetching", async () => {
-  let h;
-  h = harness({ readQuote: async (id, request) => quote(id, request, h.now() + 1000) });
-  fill(h); h.submit(); await tick(); assert.match(h.render().html, /Price quote \(USD\)/);
-  h.advance(1001); let view = h.render();
-  assert.match(view.html, /This quote has expired/); assert.doesNotMatch(view.html, /Quoted Hotel|284\.63/);
-  assert.equal(view.buttons("Request a fresh quote").length, 1);
-  assert.equal(h.timers.size, 0); assert.equal(quoteCalls(h).length, 1);
-  h.submit(); await tick(); view = h.render();
-  assert.match(view.html, /Price quote \(USD\)/); assert.equal(quoteCalls(h).length, 2);
-});
-
-test("focus and visibility changes recheck expiry after suspension or a clock jump", async (t) => {
-  for (const [target, event] of [["window", "focus"], ["document", "visibilitychange"]]) {
-    await t.test(event, async () => {
-      const h = harness(); fill(h); h.submit(); await tick(); h.render();
-      h.jump(700000); h.fire(target, event);
-      const view = h.render();
-      assert.match(view.html, /This quote has expired/); assert.doesNotMatch(view.html, /284\.63/);
-      assert.equal(quoteCalls(h).length, 1);
-    });
-  }
-});
-
-test("a synthetic parent closing the form ignores late success or 401 and reopening starts empty", async (t) => {
-  for (const late401 of [false, true]) {
-    await t.test(late401 ? "late 401" : "late success", async () => {
-      const pending = deferred(); const h = harness({ readQuote: () => pending.promise });
-      const oldForm = fill(h).form; h.submit();
-      h.show(false); const before = h.writes.length;
-      oldForm.props.onSubmit({ preventDefault() {} });
-      if (late401) pending.reject(new ApiError(401)); else pending.resolve(quote());
-      await tick(); let view = h.render();
-      assert.equal(h.writes.length, before); assert.equal(h.auth.status, "authenticated");
-      assert.deepEqual(h.navigation, []); assert.doesNotMatch(view.html, /Quoted Hotel|Price quote \(USD\)/);
-      view = h.show(true);
-      assert.equal(view.input("q"), undefined); assert.equal(view.input("children"), undefined);
-      assert.equal(quoteCalls(h).length, 1);
-    });
-  }
-});
-
-test("synthetic parent removal discards unresolved review without updating inactive form state", async () => {
-  const pending = deferred(); const h = harness({ readQuote: () => pending.promise });
-  fill(h); h.submit();
-  h.show(false); const before = h.writes.length;
-  pending.resolve(quote()); await tick(); const view = h.render();
-  assert.equal(h.writes.length, before); assert.equal(view.html, "");
-  assert.equal(quoteCalls(h).length, 1);
-});
-
-test("switching reservations cannot display a late quote or invalidate the current session", async (t) => {
-  for (const late401 of [false, true]) {
-    await t.test(late401 ? "late 401" : "late success", async () => {
-      const first = deferred(), second = deferred();
-      const h = harness({ readQuote: (id) => id === 42 ? first.promise : second.promise });
-      fill(h); h.submit();
-      h.render({ reservationId: 43, checkInDate: bookings[1].check_in_date, checkOutDate: bookings[1].check_out_date });
-      fill(h); h.submit();
-      if (late401) first.reject(new ApiError(401)); else first.resolve(quote(42));
-      await tick(); let view = h.render();
-      assert.match(view.html, /Requesting price quote/); assert.doesNotMatch(view.html, /Quoted Hotel 42/);
-      assert.equal(h.auth.status, "authenticated"); assert.deepEqual(h.navigation, []);
-      second.resolve(quote(43)); await tick(); view = h.render();
-      assert.match(view.html, /Quoted Hotel 43/); assert.doesNotMatch(view.html, /Quoted Hotel 42/);
-      assert.deepEqual(quoteCalls(h).map((c) => c.id), [42, 43]);
-    });
-  }
-});
-
-test("unmount ignores a pending failure and cancels success expiry timers and event listeners", async () => {
-  const pending = deferred(); const h = harness({ readQuote: () => pending.promise });
-  fill(h); h.submit(); h.unmount(); const before = h.writes.length;
-  pending.reject(new ApiError(401)); await tick();
-  assert.equal(h.writes.length, before); assert.deepEqual(h.navigation, []);
-  const success = harness(); fill(success); success.submit(); await tick(); success.render();
-  assert.equal(success.timers.size, 1); success.unmount();
-  assert.equal(success.timers.size, 0);
-  assert.ok([...events.values()].every((listeners) => listeners.size === 0));
-});
-
-test("active 401 invalidates the session once, redirects, and removes booking and financial data", async () => {
-  const h = harness({ readQuote: async () => { throw new ApiError(401); } });
-  const page = harness({ page: true, session: h.auth });
-  await openPage(page); fill(h); h.submit(); await tick();
-  assert.equal(h.render().html, "");
-  const view = page.render();
-  assert.equal(h.auth.status, "unauthenticated");
-  assert.equal(h.calls.filter((c) => c.operation === "invalidate").length, 1);
-  assert.ok(h.navigation.includes("/login")); assert.match(view.html, /Redirecting to sign in/);
-  assert.doesNotMatch(view.html, /Synthetic Hotel|Quoted Hotel|Financial summary|226\.80|284\.63/);
-});
-
-test("logout removes both pending and successful reviews and ignores a later protected response", async (t) => {
-  for (const ready of [false, true]) {
-    await t.test(ready ? "successful review" : "pending review", async () => {
-      const pending = deferred(); const h = harness({ readQuote: () => pending.promise });
-      const page = harness({ page: true, session: h.auth });
-      await openPage(page); fill(h); h.submit();
-      if (ready) { pending.resolve(quote()); await tick(); h.render(); }
-      h.auth.status = "unauthenticated"; let view = h.render(); const before = h.writes.length;
-      if (!ready) { pending.resolve(quote()); await tick(); view = h.render(); }
-      assert.equal(h.writes.length, before); assert.equal(h.timers.size, 0);
-      assert.doesNotMatch(view.html, /Synthetic Hotel|Quoted Hotel|Financial summary|284\.63/);
-      assert.equal(view.html, "");
-      assert.match(page.render().html, /Redirecting to sign in/);
-    });
-  }
-});
-
-test("unauthenticated or restoring standalone forms render no protected content or requests", () => {
+test("restoring or signed-out sessions show no date form and make no save request", () => {
   for (const status of ["restoring", "unauthenticated"]) {
-    const h = harness({ status }); assert.equal(h.render().html, ""); assert.deepEqual(h.calls, []);
+    const h = harness({ status, saveDates: changeReservationDates });
+    assert.equal(h.render().form, undefined);
+    assert.deepEqual(h.calls, []);
+    assert.doesNotMatch(h.render().html, /2096-02-28|LH-00000042/);
   }
 });
 
-test("reservation prop changes reset quote and initialize the new booking dates", async () => {
-  const h = harness(); fill(h); h.submit(); await tick(); h.render();
-  const view = h.render({ reservationId: 43, checkInDate: "2096-04-01", checkOutDate: "2096-04-03" });
-  assert.equal(view.input("q"), undefined); assert.equal(view.input("adults"), undefined);
-  assert.equal(view.input("check_in_date").props.value, "2096-04-01");
-  assert.doesNotMatch(view.html, /Quoted Hotel|284\.63/); assert.equal(h.timers.size, 0);
-  assert.equal(quoteCalls(h).length, 1);
+test("missing stored authentication rejects a valid date save before fetch", async () => {
+  await assert.rejects(changeReservationDates(42, newDates), (error) =>
+    error instanceof ApiError && error.status === 401);
 });
 
-test("synthetic quote success leaves the dormant booking page, payment links, and cancellation behavior unchanged", async () => {
-  const page = harness({ page: true, pendingPayment: true });
-  const before = await openPage(page);
-  const h = harness(); fill(h); h.submit(); await tick();
-  assert.equal(h.render().rows.get("LikeHome payment amount (including tax)"), "$284.63");
-  let view = page.render();
-  assert.equal(view.html, before.html);
-  assert.match(view.html, /Synthetic property description/);
-  assert.doesNotMatch(view.html, /Financial summary|Request a change quote|Price quote \(USD\)/);
-  const links = view.nodes.filter((n) => n.type === "a" && text(n) === "Complete payment");
-  assert.equal(links.length, 2); assert.equal(links[0].props.href, paymentHref(142));
-  assert.equal(view.buttons("Cancel booking").length, 2);
-  assert.equal(page.calls.some((c) => c.operation === "cancellation"), false);
-  assert.deepEqual(page.calls.map((c) => c.operation), ["bookings", "payments", "details"]);
-  assert.deepEqual(h.calls.map((c) => c.operation), ["quote"]);
-  view.buttons("Cancel booking")[0].props.onClick(); view = page.render();
-  assert.equal(view.buttons("Confirm cancellation").length, 1);
-  view.buttons("Confirm cancellation")[0].props.onClick(); await tick(); view = page.render();
-  assert.equal(page.calls.filter((c) => c.operation === "cancellation").length, 1);
-  assert.equal(page.calls.filter((c) => c.operation === "payments").length, 2);
-  assert.match(view.html, /Cancellation recorded/); assert.doesNotMatch(view.html, /Price quote \(USD\)/);
+test("logout drops a pending save and hides private dates when its success arrives", async () => {
+  const pending = deferred();
+  const acknowledgements = [];
+  const h = harness({ saveDates: () => pending.promise });
+  h.auth.user = { user_id: 1 };
+  h.render({ reservationId: 42, checkInDate: "2096-02-28", checkOutDate: "2096-03-01",
+    onDatesSaved: async (value) => acknowledgements.push(value) });
+  h.edit("check_in_date", newDates.check_in_date);
+  h.edit("check_out_date", newDates.check_out_date);
+  h.submit();
+  h.auth.user = null;
+  h.auth.status = "unauthenticated";
+  assert.equal(h.render().form, undefined);
+  pending.resolve(saved(42, newDates));
+  await tick();
+  assert.doesNotMatch(h.render().html, /Reservation dates saved|LH-00000042/);
+  assert.deepEqual(acknowledgements, []);
+  assert.equal(h.writes.some((entry) => !entry.mounted), false);
 });
 
-test("synthetic quote failure leaves the dormant booking page and existing controls intact", async () => {
-  const page = harness({ page: true, pendingPayment: true });
-  const before = await openPage(page);
-  const h = harness({ readQuote: async () => { throw new ApiError(409); } });
-  fill(h); h.submit(); await tick();
-  assert.match(h.render().html, /has changed or cannot support/);
-  const view = page.render();
-  assert.equal(view.html, before.html);
-  assert.match(view.html, /Synthetic property description/);
-  assert.equal(view.buttons("Cancel booking").length, 2); assert.equal(view.buttons("Hide details").length, 1);
-  assert.equal(view.nodes.filter((n) => n.type === "a" && text(n) === "Complete payment").length, 2);
-  assert.deepEqual(page.calls.map((c) => c.operation), ["bookings", "payments", "details"]);
-  assert.deepEqual(h.calls.map((c) => c.operation), ["quote"]);
+test("switching reservations drops an old 401 and initializes the new reservation dates", async () => {
+  const pending = deferred();
+  const h = harness({ saveDates: () => pending.promise });
+  h.render();
+  h.submit();
+  const current = h.render({ reservationId: 43, checkInDate: "2096-05-02", checkOutDate: "2096-05-04" });
+  assert.equal(current.input("check_in_date").props.value, "2096-05-02");
+  assert.equal(current.input("check_out_date").props.value, "2096-05-04");
+  pending.reject(new ApiError(401));
+  await tick();
+  assert.deepEqual(h.navigation, []);
+  assert.equal(h.writes.some((entry) => !entry.mounted), false);
+  assert.equal(h.render().input("check_in_date").props.value, "2096-05-02");
 });
 
-test("form markup has labelled required inputs, accessible errors, responsive widths, and practical touch targets", async () => {
-  const h = harness(); const view = fill(h);
-  for (const node of view.nodes.filter((n) => n.type === "input")) {
-    assert.equal(node.props.required, true);
-    assert.match(node.props.className, /min-h-11/); assert.match(node.props.className, /w-full min-w-0 max-w-full/);
+test("account switching while saving immediately hides the previous MyBookings rows", async () => {
+  const pending = deferred();
+  const h = harness({ page: true, pendingPayment: true, saveDates: () => pending.promise });
+  h.auth.user = { user_id: 1 };
+  h.render(); await tick();
+  h.render().buttons("Change Booking")[0].props.onClick();
+  h.submit();
+  h.refreshTo([{ ...bookings[1], hotel_name: "Second customer hotel" }]);
+  h.auth.user = { user_id: 2 };
+  const switching = h.render();
+  assert.doesNotMatch(switching.html, /Synthetic Hotel|Save reservation changes/);
+  pending.reject(new ApiError(401));
+  await tick();
+  const secondAccount = h.render();
+  assert.match(secondAccount.html, /Second customer hotel/);
+  assert.doesNotMatch(secondAccount.html, /Synthetic Hotel|LH-00000042/);
+  assert.deepEqual(h.navigation, []);
+});
+
+test("a late post-save refresh cannot replace another account's MyBookings", async () => {
+  const response = deferred();
+  const h = harness({ page: true, pendingPayment: true });
+  h.auth.user = { user_id: 1 };
+  h.render(); await tick();
+  h.render().buttons("Change Booking")[0].props.onClick();
+  h.refreshTo(response.promise, []);
+  h.submit(); await tick();
+  assert.match(h.render().html, /Reservation dates saved/);
+
+  h.refreshTo([{ ...bookings[1], hotel_name: "Replacement account hotel" }]);
+  h.auth.user = { user_id: 2 };
+  h.render(); await tick();
+  response.resolve(bookings);
+  await tick();
+  const newAccount = h.render();
+  assert.match(newAccount.html, /Replacement account hotel/);
+  assert.doesNotMatch(newAccount.html, /Synthetic Hotel|Reservation dates saved|LH-00000042/);
+  assert.equal(h.writes.some((entry) => !entry.mounted), false);
+});
+
+test("date save rejects malformed and mismatched API acknowledgements", async () => {
+  window.sessionStorage.getItem = () => "synthetic-auth-secret";
+  const good = saved(42, newDates);
+  const responses = [
+    null, { ...good, booking_reference: "LH-00000043" }, { ...good, reservation_id: 43 },
+    { ...good, check_in_date: "2096-03-03" }, { ...good, payment_id: 0 },
+    { ...good, changed: "true" }, { ...good, total_price: 200.005 },
+    { ...good, payment_amount: undefined },
+  ];
+  for (const response of responses) {
+    const requests = [];
+    globalThis.fetch = async (url, init) => {
+      requests.push({ path: new URL(url).pathname, method: init.method,
+        bearer: init.headers.Authorization, body: JSON.parse(init.body) });
+      return Response.json(response);
+    };
+    await assert.rejects(changeReservationDates(42, newDates), /unexpected response/);
+    assert.deepEqual(requests, [{ path: "/bookings/42/change-dates", method: "POST",
+      bearer: "Bearer synthetic-auth-secret", body: newDates }]);
   }
-  assert.match(view.html, /sm:grid-cols-2/); assert.match(view.html, /min-w-0/);
-  assert.equal(view.form.props["aria-label"], "Reservation change quote");
-  assert.equal(view.nodes.filter((n) => n.type === "input").length, 2);
-  assert.match(view.buttons("Request a quote")[0].props.className, /min-h-11/);
-  assert.doesNotMatch(view.html, /<table|min-w-\[|w-\[[0-9]|overflow-x|name="currency"|name="gl"|name="hl"/);
+  globalThis.fetch = async () => new Response("invalid JSON");
+  await assert.rejects(changeReservationDates(42, newDates), /invalid JSON response/);
+});
+
+test("an uncertain network failure keeps the entered dates and requires another explicit save", async () => {
+  window.sessionStorage.getItem = () => "synthetic-auth-secret";
+  const requests = [];
+  globalThis.fetch = async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    throw new TypeError("synthetic internal network details");
+  };
+  const h = harness({ saveDates: changeReservationDates });
+  h.render();
+  h.edit("check_in_date", newDates.check_in_date);
+  h.edit("check_out_date", newDates.check_out_date);
+  h.submit();
+  await tick();
+  h.fire("window", "focus");
+  h.fire("document", "visibilitychange");
+  await tick();
+  const failed = h.render();
+  assert.match(failed.html, /We could not confirm whether your dates were saved. Reload MyBookings/);
+  assert.doesNotMatch(failed.html, /synthetic internal network details|Reservation dates saved/);
+  assert.equal(failed.input("check_in_date").props.value, newDates.check_in_date);
+  assert.equal(failed.input("check_out_date").props.value, newDates.check_out_date);
+  assert.deepEqual(requests, [newDates]);
+});
+
+test("a save response cannot overwrite another reservation's pending payment", async () => {
+  const h = harness({ page: true, pendingPayment: true, saveDates: async (id, request) =>
+    ({ ...saved(id, request), payment_id: 143 }) });
+  h.render(); await tick();
+  h.render().buttons("Change Booking")[0].props.onClick();
+  h.refreshTo(Promise.reject(new Error("refresh unavailable")), []);
+  h.submit(); await tick();
+  const view = h.render();
+  assert.doesNotMatch(view.html, /216.00 USD/);
+  assert.match(view.html, /226.80 USD/);
 });

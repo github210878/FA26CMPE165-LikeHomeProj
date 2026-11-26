@@ -34,19 +34,10 @@ test("the Change Booking button toggles the selected reservation", () => {
     );
 });
 
-test("reservation confirmation stays disabled on MyBookings", () => {
-    assert.match(
-        pageSource,
-        /enableConfirmation=\{false\}/
-    );
-});
-
-test("the change flow requires explicit confirmation opt-in", () => {
-    assert.match(
-        flowSource,
-        /enableConfirmation\s*=\s*false/
-    );
-    assert.match(flowSource, /enableConfirmation/);
+test("MyBookings wires the date-save acknowledgement to a refresh", () => {
+    assert.match(pageSource, /onDatesSaved=\{refreshAfterDateChange\}/);
+    assert.match(flowSource, /<ReservationChangeForm/);
+    assert.doesNotMatch(flowSource, /ReservationChangeConfirmation/);
 });
 
 test("MyBookings still includes the cancellation flow", () => {

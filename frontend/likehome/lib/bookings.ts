@@ -1,5 +1,5 @@
 import { ApiError, getAuthorizedJson, postAuthorizedJson } from "./api.ts";
-import type { AdjustmentDetailResponse, AdjustmentSettlementRequest, AdjustmentSettlementResponse, BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationChargeResponse, CancellationResponse, HotelRevalidationResponse, PaymentResponse, ReservationChangeConfirmRequest, ReservationChangeQuoteResponse, ReservationChangeReceiptAdjustment, ReservationChangeReceiptResponse, ReservationChangeReviewRequest, ReservationFinancialSummary } from "./api-types.ts";
+import type { AdjustmentDetailResponse, AdjustmentSettlementRequest, AdjustmentSettlementResponse, BookingDetailItem, BookingDetailResponse, BookingListItem, BookingListResponse, BookingRequest, BookingResponse, CancellationChargeResponse, CancellationResponse, HotelRevalidationResponse, PaymentResponse, ReservationChangeConfirmRequest, ReservationChangeQuoteResponse, ReservationChangeReceiptAdjustment, ReservationChangeReceiptResponse, ReservationChangeReviewRequest, ReservationDateChangeResponse, ReservationFinancialSummary } from "./api-types.ts";
 import { validateStayDates } from "./search-validation.mjs";
 import { getAccessToken } from "./token-storage.ts";
 
@@ -317,6 +317,32 @@ function normalizeReservationChangeReview(value: unknown): Required<ReservationC
   return {
     check_in_date: value.check_in_date, check_out_date: value.check_out_date,
   };
+}
+
+function isDateChangeAmount(value: unknown): value is number {
+  return isPositiveQuoteAmount(value) && value <= 99999999.99 && value === Number(value.toFixed(2));
+}
+
+export async function changeReservationDates(
+  reservationId: number, dates: ReservationChangeReviewRequest,
+): Promise<ReservationDateChangeResponse> {
+  if (!isPositiveSafeId(reservationId)) throw new Error("Invalid reservation ID");
+  const request = normalizeReservationChangeReview(dates);
+  const token = getAccessToken();
+  if (!token) throw new ApiError(401);
+
+  const response = await postAuthorizedJson<unknown, ReservationChangeReviewRequest>(
+    `/bookings/${reservationId}/change-dates`, token, request,
+  );
+  if (!isRecord(response) || response.reservation_id !== reservationId
+      || response.check_in_date !== request.check_in_date || response.check_out_date !== request.check_out_date
+      || !isPositiveSafeId(response.payment_id)
+      || response.booking_reference !== `LH-${String(reservationId).padStart(8, "0")}`
+      || typeof response.changed !== "boolean"
+      || !isDateChangeAmount(response.total_price) || !isDateChangeAmount(response.payment_amount)) {
+    throw new Error("Reservation date change returned an unexpected response");
+  }
+  return response as ReservationDateChangeResponse;
 }
 
 function isPositiveQuoteAmount(value: unknown): value is number {

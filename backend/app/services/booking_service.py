@@ -1,10 +1,12 @@
 from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.config.constants import Constants
 from app.models.hotel import Hotel
+from app.models.payment import Payment
 from app.models.reservation import Reservation
 from app.models.room_type import RoomType
 from app.repositories import booking_dao, user_dao
@@ -16,7 +18,11 @@ from app.schemas.booking_schema import (
     PaymentResponse,
 )
 from app.schemas.hotel_schema import HotelRevalidationRequest
-from app.services import hotel_service
+from app.schemas.reservation_change_schema import (
+    ReservationChangeQuoteRequest,
+    ReservationDateChangeResponse,
+)
+from app.services import hotel_service, reservation_change_quote_service
 from app.services.cancellation_policy import calculate_cancellation_fee
 from app.services.payment_service import payment_service
 
@@ -120,6 +126,22 @@ def create_booking(
         if room_type_id is None:
             room_type_id = booking_dao.stage_booking_record(db, room_type).room_type_id
 
+        # Older API clients may omit occupancy. Preserve the existing checkout
+        # defaults for them, but do not infer party size for later changes.
+        booking_context = None
+        if {"adults", "children"} <= booking_info.model_fields_set:
+            booking_context = {
+                "property_token": quote.property_token,
+                "q": booking_info.q,
+                "adults": booking_info.adults,
+                "children": booking_info.children,
+                "currency": booking_info.currency,
+                "gl": booking_info.gl,
+                "hl": booking_info.hl,
+                "pending_amount": str(payment_amount),
+                "nightly_price": float(nightly_price),
+            }
+
         reservation = booking_dao.stage_booking_record(
             db,
             Reservation(
@@ -131,6 +153,7 @@ def create_booking(
                 check_out_date=booking_info.check_out_date,
                 total_price=float(total_price),
                 status="confirmed",
+                booking_context=booking_context,
             ),
         )
         payment = payment_service.create_pending_payment(
@@ -411,6 +434,130 @@ def pay_with_reward_points(
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to record payment") from exc
+
+
+def _date_change_records(
+    db: Session, reservation_id: int, user_id: int, *, lock: bool = False,
+) -> tuple[Reservation, Payment]:
+    get_reservation = booking_dao.lock_owned_reservation if lock else booking_dao.get_owned_reservation
+    reservation = get_reservation(db, reservation_id, user_id)
+    if reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    if reservation.status != "confirmed":
+        raise HTTPException(status_code=409, detail={"code": "reservation_not_confirmed"})
+
+    payments = booking_dao.get_reservation_payments(db, reservation_id, lock=lock)
+    if len(payments) != 1 or payments[0].payment_type != "booking":
+        raise HTTPException(status_code=409, detail={"code": "payment_unsupported"})
+    payment = payments[0]
+    if payment.payment_status != "pending":
+        raise HTTPException(status_code=409, detail={"code": "payment_unsupported"})
+    return reservation, payment
+
+
+def _date_change_snapshot(db: Session, reservation: Reservation, payment: Payment) -> tuple:
+    room = db.get(RoomType, reservation.room_type_id)
+    hotel = db.get(Hotel, room.hotel_id) if room else None
+    return (
+        reservation.room_type_id, hotel.hotel_token if hotel else None,
+        reservation.check_in_date, reservation.check_out_date, reservation.total_price,
+        reservation.booking_context, payment.payment_id, payment.amount,
+    )
+
+
+def _date_change_result(
+    reservation: Reservation, payment: Payment, *, changed: bool,
+) -> ReservationDateChangeResponse:
+    return ReservationDateChangeResponse(
+        reservation_id=reservation.reservation_id,
+        payment_id=payment.payment_id,
+        booking_reference=_booking_reference(reservation.reservation_id),
+        check_in_date=reservation.check_in_date,
+        check_out_date=reservation.check_out_date,
+        total_price=reservation.total_price,
+        payment_amount=payment.amount,
+        changed=changed,
+    )
+
+
+def change_booking_dates(
+    db: Session, reservation_id: int, dates: ReservationChangeQuoteRequest, user_id: int,
+) -> ReservationDateChangeResponse:
+    """Save a same-property date change within the existing pending payment approval."""
+    requested_dates = dates.check_in_date, dates.check_out_date
+    try:
+        reservation, payment = _date_change_records(db, reservation_id, user_id)
+        quote = None
+        snapshot = None
+        if requested_dates != (reservation.check_in_date, reservation.check_out_date):
+            snapshot = _date_change_snapshot(db, reservation, payment)
+            context = reservation.booking_context
+            provider_keys = {"property_token", "q", "adults", "children", "currency", "gl", "hl"}
+            required = provider_keys | {"pending_amount", "nightly_price"}
+            if (
+                not isinstance(context, dict) or set(context) != required
+                or not snapshot[1] or snapshot[1] != context["property_token"]
+                or type(context["adults"]) is not int or type(context["children"]) is not int
+            ):
+                raise HTTPException(status_code=409, detail={"code": "booking_context_missing"})
+            provider_fields = {key: context[key] for key in provider_keys}
+            try:
+                info = HotelRevalidationRequest(**provider_fields, **dates.model_dump())
+                accepted_amount = Decimal(context["pending_amount"])
+                if not accepted_amount.is_finite() or not 0 < accepted_amount <= MAX_MONEY:
+                    raise ValueError("Invalid accepted amount")
+            except (ValidationError, ArithmeticError, TypeError, ValueError):
+                raise HTTPException(status_code=409, detail={"code": "booking_context_missing"}) from None
+            if accepted_amount != Decimal(str(payment.amount)):
+                raise HTTPException(status_code=409, detail={"code": "payment_unsupported"})
+
+            # Release the read transaction before asking the hotel provider.
+            db.rollback()
+            try:
+                quote = reservation_change_quote_service.validate_revalidated_quote(
+                    hotel_service.revalidate_hotel(info), info,
+                )
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=502, detail="Hotel availability could not be verified") from None
+            if Decimal(str(quote.likehome_payment_amount)) > accepted_amount:
+                raise HTTPException(status_code=409, detail={"code": "price_increase"})
+
+        # Start a fresh snapshot and serialize with create_booking before reading overlaps.
+        db.rollback()
+        if not booking_dao.lock_user_for_booking(db, user_id):
+            raise HTTPException(status_code=401, detail="User is inactive or does not exist",
+                                headers={"WWW-Authenticate": "Bearer"})
+        reservation, payment = _date_change_records(db, reservation_id, user_id, lock=True)
+        if requested_dates == (reservation.check_in_date, reservation.check_out_date):
+            result = _date_change_result(reservation, payment, changed=False)
+            db.rollback()
+            return result
+        if quote is None or snapshot != _date_change_snapshot(db, reservation, payment):
+            raise HTTPException(status_code=409, detail={"code": "reservation_changed"})
+        if booking_dao.check_if_user_booked_by_date_range(
+            db, user_id, *requested_dates, excluded_reservation_id=reservation_id,
+        ):
+            raise HTTPException(status_code=409, detail={"code": "dates_overlap"})
+
+        reservation.check_in_date, reservation.check_out_date = requested_dates
+        reservation.total_price = quote.likehome_reservation_total
+        payment.amount = quote.likehome_payment_amount
+        reservation.booking_context = {
+            **reservation.booking_context,
+            "pending_amount": str(_money(Decimal(str(payment.amount)))),
+            "nightly_price": quote.current_price_per_night,
+        }
+        result = _date_change_result(reservation, payment, changed=True)
+        db.commit()
+        return result
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to change reservation dates") from exc
 
 
 def modify_booking(
