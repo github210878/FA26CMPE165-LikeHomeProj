@@ -109,3 +109,15 @@ test("reward redemption payment calls the dedicated points endpoint", async () =
   assert.equal(calls[0].init.headers.Authorization, "Bearer private-test-token");
   assert.equal(calls[0].init.method, undefined);
 });
+
+test("a rejected reward payment is surfaced once without treating 409 as proof of funding", async () => {
+  session();
+  const requests = [];
+  globalThis.fetch = async (url) => {
+    requests.push(new URL(url).pathname);
+    return Response.json({ detail: "Not enough reward points" }, { status: 409 });
+  };
+  await assert.rejects(payBookingPaymentWithRewards(11), (error) =>
+    error instanceof ApiError && error.status === 409);
+  assert.deepEqual(requests, ["/bookings/pay-with-reward-points/11"]);
+});

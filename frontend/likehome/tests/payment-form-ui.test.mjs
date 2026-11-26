@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { bookingConfirmationHref } from "../lib/booking-confirmation.ts";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,6 +16,7 @@ const loadedModule = { exports: {} };
 const Link = ({ href, children, ...props }) => createElement("a", { href, ...props }, children);
 new Function("require", "module", "exports", outputText)((name) => {
   if (name === "next/link") return { __esModule: true, default: Link };
+  if (name === "@/lib/booking-confirmation") return { bookingConfirmationHref };
   return require(name);
 }, loadedModule, loadedModule.exports);
 
@@ -77,4 +79,11 @@ test("reward redemption payment explains the points transaction", () => {
   assert.match(html, /creates a redemption transaction/);
   assert.match(html, /paid in full with reward points/);
   assert.doesNotMatch(html, /LikeHome demo payment/);
+});
+
+test("a recorded payment carries reward intent to confirmation without claiming it was funded by points", () => {
+  const html = render({ ...pendingPayment, payment_status: "paid" }, { redemptionRequested: true });
+  assert.match(html, /href="\/booking-confirmation\/42\?redeem=1"/);
+  assert.match(html, /Payment recorded successfully/);
+  assert.doesNotMatch(html, /Reward redemption confirmed|Points redeemed|Free stay/);
 });

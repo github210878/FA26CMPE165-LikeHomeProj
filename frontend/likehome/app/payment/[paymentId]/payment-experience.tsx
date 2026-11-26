@@ -7,7 +7,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { ApiError } from "@/lib/api";
 import type { PaymentResponse } from "@/lib/api-types";
 import PaymentForm from "@/components/PaymentForm";
-import { parseReservationId } from "@/lib/booking-confirmation";
+import { bookingConfirmationHref, parseReservationId } from "@/lib/booking-confirmation";
 import { getPaymentDetails, payBookingPayment, payBookingPaymentWithRewards } from "@/lib/bookings";
 import { createBookingSubmissionGuard } from "@/lib/checkout";
 import { PaymentSkeleton, SessionLoadingSkeleton } from "@/components/LoadingSkeletons";
@@ -67,7 +67,7 @@ export default function PaymentExperience({ paymentId }: { paymentId: string }) 
         throw new Error("Payment result did not match the reviewed payment");
       }
       setDetail({ kind: "ready", payment: paid });
-      router.replace(`/booking-confirmation/${paid.reservation_id}`);
+      router.replace(bookingConfirmationHref(paid, redemptionRequested));
     } catch (error: unknown) {
       if (error instanceof ApiError && error.status === 401) {
         invalidateSession();
